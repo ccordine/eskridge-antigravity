@@ -1593,7 +1593,8 @@ const state = {
   labRoot: null,
   refs: null,
   mounted: false,
-  streamVersion: 0
+  streamVersion: 0,
+  exporting: false
 };
 
 class LineChart {
@@ -1803,7 +1804,8 @@ function maybeInitLab() {
     statVz: root.querySelector('[data-stat="vertical"]'),
     statC: root.querySelector('[data-stat="c"]'),
     statLock: root.querySelector('[data-stat="lock"]'),
-    statEnergy: root.querySelector('[data-stat="energy"]')
+    statEnergy: root.querySelector('[data-stat="energy"]'),
+    exportButtons: Array.from(root.querySelectorAll('[data-export-sim]'))
   };
 
   state.charts = {
@@ -1908,6 +1910,89 @@ function startStream() {
   };
 }
 
+function parseDownloadFilename(disposition, fallback) {
+  if (!disposition) {
+    return fallback;
+  }
+
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match && utf8Match[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  const quotedMatch = disposition.match(/filename=\"([^\"]+)\"/i);
+  if (quotedMatch && quotedMatch[1]) {
+    return quotedMatch[1];
+  }
+
+  const bareMatch = disposition.match(/filename=([^;]+)/i);
+  if (bareMatch && bareMatch[1]) {
+    return bareMatch[1].trim();
+  }
+
+  return fallback;
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportScenario(format = 'zip') {
+  maybeInitLab();
+  const root = state.labRoot;
+  if (!root || state.exporting) {
+    return;
+  }
+
+  const scenario = root.querySelector('[data-scenario-select]')?.value || 'free_fall';
+  const formatKey = String(format || 'zip').toLowerCase();
+  const ext = formatKey === 'csv' ? 'csv' : formatKey === 'meta' ? 'meta.json' : 'zip';
+  const fallbackName = `${scenario}-export.${ext}`;
+
+  state.exporting = true;
+  if (state.refs?.exportButtons) {
+    state.refs.exportButtons.forEach((btn) => {
+      btn.disabled = true;
+    });
+  }
+  setStatus(`exporting ${scenario} (${formatKey})...`);
+
+  try {
+    const url = `/api/sim/export?scenario=${encodeURIComponent(scenario)}&format=${encodeURIComponent(formatKey)}`;
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) {
+      const message = (await res.text()).trim();
+      throw new Error(message || 'export failed');
+    }
+
+    const blob = await res.blob();
+    const filename = parseDownloadFilename(res.headers.get('content-disposition'), fallbackName);
+    triggerDownload(blob, filename);
+    setStatus(`export ready • ${filename}`);
+  } catch (err) {
+    const message = err && err.message ? err.message : 'export failed';
+    setStatus(`export failed: ${message}`);
+  } finally {
+    state.exporting = false;
+    if (state.refs?.exportButtons) {
+      state.refs.exportButtons.forEach((btn) => {
+        btn.disabled = false;
+      });
+    }
+  }
+}
+
 function drawCharts() {
   if (state.charts) {
     Object.values(state.charts).forEach((chart) => chart.draw());
@@ -1927,6 +2012,14 @@ function setupEvents() {
     if (event.target.closest('[data-stop-sim]')) {
       event.preventDefault();
       stopStream('stopped');
+      return;
+    }
+
+    const exportButton = event.target.closest('[data-export-sim]');
+    if (exportButton) {
+      event.preventDefault();
+      const format = exportButton.getAttribute('data-export-format') || 'zip';
+      exportScenario(format);
       return;
     }
 

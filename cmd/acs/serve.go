@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +20,7 @@ import (
 	"time"
 
 	"github.com/example/acs/internal/config"
+	"github.com/example/acs/internal/logging"
 	"github.com/example/acs/internal/sim"
 )
 
@@ -62,6 +65,7 @@ func serveCmd(args []string) error {
 	mux.HandleFunc("/paper/", s.handlePaperSection)
 	mux.HandleFunc("/api/scenarios", s.handleScenarios)
 	mux.HandleFunc("/api/sim/stream", s.handleSimStream)
+	mux.HandleFunc("/api/sim/export", s.handleSimExport)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
@@ -299,9 +303,159 @@ func (s *paperServer) handleSimStream(w http.ResponseWriter, r *http.Request) {
 	_ = writePayload(done)
 }
 
+func (s *paperServer) handleSimExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	scenarioArg := r.URL.Query().Get("scenario")
+	cfgPath, cfg, err := s.resolveScenario(scenarioArg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format == "" {
+		format = "zip"
+	}
+
+	csvData, metaData, err := runScenarioArtifacts(cfgPath, cfg)
+	if err != nil {
+		http.Error(w, "failed to generate export", http.StatusInternalServerError)
+		return
+	}
+
+	baseName := sanitizeDownloadName(cfg.Name)
+	timestamp := time.Now().UTC().Format("20060102-150405")
+
+	w.Header().Set("Cache-Control", "no-store")
+	switch format {
+	case "csv":
+		filename := fmt.Sprintf("%s-%s.csv", baseName, timestamp)
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+		_, _ = w.Write(csvData)
+	case "meta", "json":
+		filename := fmt.Sprintf("%s-%s.meta.json", baseName, timestamp)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+		_, _ = w.Write(metaData)
+	case "zip":
+		zipData, err := zipScenarioArtifacts(baseName, csvData, metaData)
+		if err != nil {
+			http.Error(w, "failed to package export", http.StatusInternalServerError)
+			return
+		}
+		filename := fmt.Sprintf("%s-%s-export.zip", baseName, timestamp)
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+		_, _ = w.Write(zipData)
+	default:
+		http.Error(w, "invalid format (expected zip, csv, or meta)", http.StatusBadRequest)
+	}
+}
+
 func runSimOnly(cfg config.Scenario, sink func(sim.Sample) error) error {
 	_, err := sim.Run(cfg, sink)
 	return err
+}
+
+func runScenarioArtifacts(cfgPath string, cfg config.Scenario) ([]byte, []byte, error) {
+	var csvBuffer bytes.Buffer
+	logger, err := logging.NewCSVLogger(&csvBuffer)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	result, err := sim.Run(cfg, func(sample sim.Sample) error {
+		return logger.Sample(sample)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := logger.Flush(); err != nil {
+		return nil, nil, err
+	}
+
+	cfgHash, err := logging.ConfigSHA256(cfgPath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	meta := logging.ReplayMeta{
+		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+		Scenario:     cfg.Name,
+		Seed:         cfg.Seed,
+		Dt:           cfg.Dt,
+		Duration:     cfg.Duration,
+		Steps:        result.Steps,
+		Version:      logging.BuildVersion(),
+		ConfigSHA256: cfgHash,
+	}
+	metaData, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return nil, nil, err
+	}
+	metaData = append(metaData, '\n')
+
+	return csvBuffer.Bytes(), metaData, nil
+}
+
+func zipScenarioArtifacts(baseName string, csvData, metaData []byte) ([]byte, error) {
+	var output bytes.Buffer
+	archive := zip.NewWriter(&output)
+
+	csvFile, err := archive.Create(baseName + ".csv")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := csvFile.Write(csvData); err != nil {
+		return nil, err
+	}
+
+	metaFile, err := archive.Create(baseName + ".meta.json")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := metaFile.Write(metaData); err != nil {
+		return nil, err
+	}
+
+	if err := archive.Close(); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func sanitizeDownloadName(name string) string {
+	raw := strings.TrimSpace(strings.ToLower(name))
+	if raw == "" {
+		return "scenario"
+	}
+
+	var b strings.Builder
+	lastDash := false
+	for _, r := range raw {
+		isAlphaNum := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if isAlphaNum {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+
+		if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+
+	clean := strings.Trim(b.String(), "-")
+	if clean == "" {
+		return "scenario"
+	}
+	return clean
 }
 
 func (s *paperServer) resolveScenario(arg string) (string, config.Scenario, error) {
