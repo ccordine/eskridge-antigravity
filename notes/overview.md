@@ -52,8 +52,22 @@ oscilation gives the knov to flip the sign on whether we are being pulled by gra
 high-Q resonator ( stores the oscillatory energy )
 with phase lock keeps the drive aligned to the response
 same logic as keeping a PLL locked
+
+WHAT IS PLL?
+Phase locked loop
+a control system that makes one scillator match/lock onto another oscillator's phase and frequency
+PLLs keep the oscillators sync'd
+The basic pieces
+- reference signal
+- VCO/NCO a controllable oscillator you can speed up or slow down
+- phase detector, measures phase difference between reference and your oscillator
+- loop filter, smooths that error so you dont jitter
+- feedback, adjust the oscillator until the phase error goes to a stable small value
+
+same as...
 keeping a laser cavity coherent
 keeping an inverted pendulum upright via a periodic drive
+
 big LC resonator / coil + capacitor bank
 arranged as a cavity/geometry that concentrates field energy
 with adjustable frequency/tuning and adjustable phase/polarity
@@ -79,3 +93,41 @@ vibration patterns with sand on speakers
 using audio for propulsion or assistance
 
 Coating itself in orange plasma Ion wind /EHD thrust, MHD control
+
+
+Knobs required:
+Frequency
+target the right frequency for oscilation, the natural frequency of the target
+
+Phase
+adding or subtracting energy to maintain oscilation
+
+Amplitude ( drive power )
+More power ramps the stored energy faster until you hit limits
+
+Q / losses
+High Q means the energy stays in the oscillation longer so it can build bigger
+How do we control that?
+So that's can be influenced by springs mechanically
+
+we can use a plasma sheath as a boundary layer to control drag and stability
+if we ionize the air right near the surface, we can use electric/magnetic fields to push that ionized layer around a bit
+that can
+- keep airflow attached longer
+- reduce forms of turbulence
+- improve control authority at high speeds/angles
+- potentially reduce drag in certain regimes
+
+It can also help with shockwave shaping to at very high speeds where most drag and heat comes from
+
+MHD flow control
+- accelerate/decelerate the flow locally
+- act like a field-based control surface
+- potentially reduce sonic boom signatures in some concepts
+
+plasma can also mess with radars/ tracking/ returns
+
+Limits ( nonlinearities/breakdown )
+at high energy the system detunes saturates heats arcs or breaks
+
+

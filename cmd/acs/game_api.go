@@ -616,7 +616,8 @@ func (gs *gameSession) evaluateGravityLocked() gameGravityEval {
 			eval.effective = gs.couplerState.EffectiveGravityAccel(gRaw, gs.craft.Orientation)
 		}
 	case "yukawa":
-		eval.effective, diag := physics.GravityAtYukawa(gs.craft.Position, gs.env.G, gs.bodies, gs.yukawaAlpha, gs.yukawaLambda)
+		var diag []physics.YukawaBodyDiagnostic
+		eval.effective, diag = physics.GravityAtYukawa(gs.craft.Position, gs.env.G, gs.bodies, gs.yukawaAlpha, gs.yukawaLambda)
 		eval.yukawaRepulsionPrimary, eval.yukawaKernelPrimary = findYukawaPrimary(gs.primaryBodyLocked().Name, diag)
 	case "negmass":
 		inertialSign := 1.0
