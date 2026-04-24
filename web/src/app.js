@@ -315,6 +315,22 @@ function ensureRecyclrMount() {
   state.mounted = true;
 }
 
+function normalizePaperNavSelection(scope = document) {
+  if (!scope || typeof scope.querySelectorAll !== 'function') {
+    return;
+  }
+  const mapping = '#paper-fragment@outerHTML->#paper-content@innerHTML';
+  scope.querySelectorAll('a[data-paper-link]').forEach((link) => {
+    if (!link || typeof link.getAttribute !== 'function' || typeof link.setAttribute !== 'function') {
+      return;
+    }
+    const current = link.getAttribute('data-gx-select') || '';
+    if (current !== mapping) {
+      link.setAttribute('data-gx-select', mapping);
+    }
+  });
+}
+
 function normalizeScenario(item) {
   if (!item || typeof item !== 'object') {
     return null;
@@ -920,6 +936,7 @@ function setupEvents() {
   }, true);
 
   document.addEventListener('gx:updated', () => {
+    normalizePaperNavSelection();
     window.setTimeout(() => {
       maybeInitLab();
     }, 0);
@@ -935,6 +952,7 @@ function setupEvents() {
 
 async function boot() {
   ensureRecyclrMount();
+  normalizePaperNavSelection();
   setupEvents();
   await loadScenarios();
   maybeInitLab();

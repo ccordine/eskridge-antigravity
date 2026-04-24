@@ -130,4 +130,39 @@ plasma can also mess with radars/ tracking/ returns
 Limits ( nonlinearities/breakdown )
 at high energy the system detunes saturates heats arcs or breaks
 
+Step 0 — Idle safe state
 
+* Coupler off
+* C \approx 1 (normal gravity)
+* system monitoring only
+
+Practical Switch flip
+Step 1 - Spin-up (find resonance and lock)
+
+* Start low drive amplitude
+* Sweep/track until the resonator response peaks
+* Engage PLL; confirm stable lock (phase error small, stable amplitude)
+
+Step 2 - Build coupling authority (raise k)
+
+* Increase drive amplitude gradually (rate-limited)
+* Watch for detuning, heating, nonlinearities
+* Confirm k rises predictably without phase slips
+
+Step 3 - Transition to cancel (move φ toward π/2)
+
+* Adjust phase bias toward “cancel”
+* You’re watching the real outcome: the craft’s effective weight dropping
+* Controller trims so you don’t “bounce” or overshoot
+
+Step 4 - Hover and control
+
+* Maintain lock continuously
+* Use small adjustments to φ (and/or k) to regulate altitude like a throttle
+* Use geometry controls (if available) to translate laterally / steer
+
+Step 5 - Land / disengage
+
+* Move φ back toward 0 and/or reduce k
+* Return C \to 1 gradually (soft re-coupling)
+* Coupler off
