@@ -141,22 +141,26 @@ type vizStartEvent struct {
 }
 
 type vizSampleEvent struct {
-	Type         string  `json:"type"`
-	Step         int     `json:"step"`
-	Time         float64 `json:"time"`
-	Altitude     float64 `json:"altitude"`
-	VerticalVel  float64 `json:"vertical_vel"`
-	CouplingC    float64 `json:"coupling_c"`
-	CouplingK    float64 `json:"coupling_k"`
-	LockQuality  float64 `json:"lock_quality"`
-	Energy       float64 `json:"energy"`
-	DrivePower   float64 `json:"drive_power"`
-	RawGravity   float64 `json:"raw_gravity"`
-	EffectiveG   float64 `json:"effective_g"`
-	PhaseError   float64 `json:"phase_error"`
-	PositionZ    float64 `json:"position_z"`
-	VelocityZ    float64 `json:"velocity_z"`
-	GravityPower float64 `json:"gravity_power"`
+	Type                    string  `json:"type"`
+	Step                    int     `json:"step"`
+	Time                    float64 `json:"time"`
+	Altitude                float64 `json:"altitude"`
+	VerticalVel             float64 `json:"vertical_vel"`
+	GravityModel            string  `json:"gravity_model"`
+	CouplingC               float64 `json:"coupling_c"`
+	CouplingK               float64 `json:"coupling_k"`
+	LockQuality             float64 `json:"lock_quality"`
+	Energy                  float64 `json:"energy"`
+	DrivePower              float64 `json:"drive_power"`
+	RawGravity              float64 `json:"raw_gravity"`
+	EffectiveG              float64 `json:"effective_g"`
+	YukawaRepulsionPrimary  float64 `json:"yukawa_repulsion_primary"`
+	NegMassQGPrimary        float64 `json:"negmass_qg_primary"`
+	NegMassRunawayFlag      bool    `json:"negmass_runaway_flag"`
+	PhaseError              float64 `json:"phase_error"`
+	PositionZ               float64 `json:"position_z"`
+	VelocityZ               float64 `json:"velocity_z"`
+	GravityPower            float64 `json:"gravity_power"`
 }
 
 type vizDoneEvent struct {
@@ -168,22 +172,26 @@ type vizDoneEvent struct {
 
 func toVizSampleEvent(s sim.Sample) vizSampleEvent {
 	return vizSampleEvent{
-		Type:         "sample",
-		Step:         s.Step,
-		Time:         s.Time,
-		Altitude:     s.Altitude,
-		VerticalVel:  s.VerticalVel,
-		CouplingC:    s.CouplingC,
-		CouplingK:    s.CouplingK,
-		LockQuality:  s.LockQuality,
-		Energy:       s.Energy,
-		DrivePower:   s.DrivePower,
-		RawGravity:   s.GRawMag,
-		EffectiveG:   s.EffectiveGMag,
-		PhaseError:   s.PhaseError,
-		PositionZ:    s.Position.Z,
-		VelocityZ:    s.Velocity.Z,
-		GravityPower: s.GravPower,
+		Type:                   "sample",
+		Step:                   s.Step,
+		Time:                   s.Time,
+		Altitude:               s.Altitude,
+		VerticalVel:            s.VerticalVel,
+		GravityModel:           s.GravityModel,
+		CouplingC:              s.CouplingC,
+		CouplingK:              s.CouplingK,
+		LockQuality:            s.LockQuality,
+		Energy:                 s.Energy,
+		DrivePower:             s.DrivePower,
+		RawGravity:             s.GRawMag,
+		EffectiveG:             s.EffectiveGMag,
+		YukawaRepulsionPrimary: s.YukawaRepulsionPrimary,
+		NegMassQGPrimary:       s.QGPrimary,
+		NegMassRunawayFlag:     s.RunawayAccelFlag,
+		PhaseError:             s.PhaseError,
+		PositionZ:              s.Position.Z,
+		VelocityZ:              s.Velocity.Z,
+		GravityPower:           s.GravPower,
 	}
 }
 

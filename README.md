@@ -25,7 +25,7 @@ npm run build
 ## Web App (Interactive Paper)
 
 ```bash
-./acs serve -addr :8080 -scenarios ./scenarios -web ./web
+./acs serve -addr :8080 -scenarios ./scenarios -web ./web -notes ./notes
 ```
 
 Then open `http://127.0.0.1:8080`.
@@ -34,9 +34,21 @@ Highlights:
 
 - Tailwind CSS-driven interactive paper layout
 - RecyclrJS fragment navigation (`/paper/*` sections)
-- Live simulation charting through read-only SSE telemetry (`/api/sim/stream`)
+- Interactive Flight Lab game loop with fixed-step backend sessions (`/api/game/start`, `/api/game/step`, `/api/game/stop`)
+- Dual-canvas visualization (top-down + profile) with live HUD telemetry
 - Scenario metadata endpoint (`/api/scenarios`)
+- Scenario export endpoint (`/api/sim/export`)
+- Cascading file-based notes hub at `/notes` (Markdown docs from `notes/`)
 - Landing paper copy aligned to \"The Coupling Hypothesis (Eskridge Force)\" narrative
+
+## Cascading Notes Hub (No Database)
+
+The notes workspace is fully file-based and Git-tracked.
+
+- Edit docs directly in `notes/**/*.md` using Vim (or any editor).
+- Open `http://127.0.0.1:8080/notes` to browse the note tree and follow note links.
+- Use `[[slug/path]]` links inside notes to create cascading drill-down docs.
+- No database is used for notes; content is read directly from repository files at request time.
 
 ## Interactive CLI UI
 
@@ -83,9 +95,32 @@ docker rm -f acs-web 2>/dev/null || true
 ## Core guarantees
 
 - No direct state overrides for motion control.
-- Coupling affects motion only through modeled acceleration (`C * g` or directional variant).
+- Gravity is applied only through modeled acceleration (`a_grav`) from the selected gravity model.
+- Coupling model affects motion only through modeled acceleration (`C * g` or directional variant).
 - Energy draw is explicit and logged.
 - Deterministic replay metadata includes config SHA-256 and build version.
+
+## Gravity Models
+
+`gravity_model.type` selects the field model used for craft acceleration:
+
+- `coupling`: baseline Newtonian field with coupler modulation (`C * g_raw`).
+- `yukawa`: Newtonian field with Yukawa correction (`alpha`, `lambda`).
+- `negmass`: signed gravitational charge model (`qg_craft`, per-body `qg_overrides`, `C1|C2` convention).
+
+Example:
+
+```json
+"gravity_model": {
+  "type": "negmass",
+  "negmass": {
+    "convention": "C2",
+    "qg_craft": -1.0,
+    "qg_overrides": { "earth": 1.0 },
+    "runaway_accel_limit": 5.0
+  }
+}
+```
 
 ## Scenario set
 
@@ -93,7 +128,22 @@ docker rm -f acs-web 2>/dev/null || true
 - `scenarios/hover_attempt.json`
 - `scenarios/climb.json`
 - `scenarios/lock_loss.json`
+- `scenarios/yukawa_repulsion.json`
+- `scenarios/negmass_c1_repel.json`
+- `scenarios/negmass_c2_runaway.json`
 
 ## CSV columns
 
-`step,time,pos_*,vel_*,altitude,vertical_vel,g_raw_*,g_eff_*,c,k,phi,phase_error,lock_quality,omega_drive,omega_0,drive_power,energy,grav_power`
+`step,time,pos_*,vel_*,altitude,vertical_vel,g_raw_*,g_eff_*,gravity_model,c,k,phi,phase_error,lock_quality,omega_drive,omega_0,drive_power,energy,yukawa_*,negmass_*,runaway_*,grav_power`
+
+## Flight Lab Controls
+
+In `/paper/lab`:
+
+- `A / D`: decrease/increase drive amplitude target
+- `W / S`: increase/decrease phase target
+- `Q / E`: rotate directional coupling axis yaw
+- `Space`: toggle lock assist (PLL gains on/off)
+- `R`: reset active session
+
+The lab uses fixed dt stepping server-side and applies player input only through coupler/control targets.

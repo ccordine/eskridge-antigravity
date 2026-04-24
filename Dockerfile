@@ -28,8 +28,9 @@ RUN adduser -D -u 10001 app
 COPY --from=go-builder /out/acs ./acs
 COPY --from=go-builder /src/scenarios ./scenarios
 COPY --from=go-builder /src/web ./web
+COPY notes ./notes
 
 EXPOSE 8080
 USER app
 
-CMD ["./acs", "serve", "-addr", ":8080", "-scenarios", "./scenarios", "-web", "./web"]
+CMD ["./acs", "serve", "-addr", ":8080", "-scenarios", "./scenarios", "-web", "./web", "-notes", "./notes"]

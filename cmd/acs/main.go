@@ -80,7 +80,7 @@ func trimExt(name string) string {
 func usage() {
 	fmt.Println("acs usage:")
 	fmt.Println("  acs run -config scenarios/free_fall.json [-out out/free_fall.csv] [-meta out/free_fall.meta.json]")
-	fmt.Println("  acs serve [-addr :8080] [-scenarios scenarios] [-web web]")
+	fmt.Println("  acs serve [-addr :8080] [-scenarios scenarios] [-web web] [-notes notes]")
 	fmt.Println("  acs viz -config scenarios/free_fall.json [-addr 127.0.0.1:8090] [-speed 1.0] [-hold]")
 	fmt.Println("  acs ui [-scenarios scenarios] [-out out/custom.csv] [-meta out/custom.meta.json]")
 	fmt.Println("  acs version")

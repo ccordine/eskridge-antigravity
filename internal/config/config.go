@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/example/acs/internal/control"
 	"github.com/example/acs/internal/coupler"
@@ -20,6 +21,7 @@ type Scenario struct {
 	Bodies      []BodyConfig      `json:"bodies"`
 	Craft       CraftConfig       `json:"craft"`
 	Environment EnvironmentConfig `json:"environment"`
+	GravityModel GravityModelConfig `json:"gravity_model"`
 	Coupler     CouplerConfig     `json:"coupler"`
 	Controller  ControllerConfig  `json:"controller"`
 }
@@ -68,6 +70,24 @@ type GroundConfig struct {
 	Restitution  float64 `json:"restitution"`
 	SurfaceEps   float64 `json:"surface_eps"`
 	TangentialMu float64 `json:"tangential_mu"`
+}
+
+type GravityModelConfig struct {
+	Type    string            `json:"type"`
+	Yukawa  YukawaConfig      `json:"yukawa"`
+	NegMass NegMassModelConfig `json:"negmass"`
+}
+
+type YukawaConfig struct {
+	Alpha  float64 `json:"alpha"`
+	Lambda float64 `json:"lambda"`
+}
+
+type NegMassModelConfig struct {
+	Convention        string             `json:"convention"`
+	QGCraft           float64            `json:"qg_craft"`
+	QGOverrides       map[string]float64 `json:"qg_overrides"`
+	RunawayAccelLimit float64            `json:"runaway_accel_limit"`
 }
 
 type CouplerConfig struct {
@@ -143,7 +163,7 @@ func Load(path string) (Scenario, error) {
 	return cfg, nil
 }
 
-func (s Scenario) Validate() error {
+func (s *Scenario) Validate() error {
 	if s.Dt <= 0 {
 		return fmt.Errorf("dt must be > 0")
 	}
@@ -165,6 +185,41 @@ func (s Scenario) Validate() error {
 	if s.LogEvery <= 0 {
 		s.LogEvery = 1
 	}
+
+	s.GravityModel.Type = strings.ToLower(strings.TrimSpace(s.GravityModel.Type))
+	if s.GravityModel.Type == "" {
+		s.GravityModel.Type = "coupling"
+	}
+
+	switch s.GravityModel.Type {
+	case "coupling":
+		// uses existing coupler subsystem with no extra config requirements
+	case "yukawa":
+		if s.GravityModel.Yukawa.Lambda < 0 {
+			return fmt.Errorf("gravity_model.yukawa.lambda must be >= 0")
+		}
+	case "negmass":
+		convention := strings.ToUpper(strings.TrimSpace(s.GravityModel.NegMass.Convention))
+		if convention == "" {
+			convention = "C1"
+		}
+		if convention != "C1" && convention != "C2" {
+			return fmt.Errorf("gravity_model.negmass.convention must be C1 or C2")
+		}
+		s.GravityModel.NegMass.Convention = convention
+		if s.GravityModel.NegMass.QGCraft == 0 {
+			s.GravityModel.NegMass.QGCraft = 1
+		}
+		if s.GravityModel.NegMass.RunawayAccelLimit <= 0 {
+			s.GravityModel.NegMass.RunawayAccelLimit = 1e6
+		}
+		if s.GravityModel.NegMass.QGOverrides == nil {
+			s.GravityModel.NegMass.QGOverrides = make(map[string]float64)
+		}
+	default:
+		return fmt.Errorf("gravity_model.type must be coupling, yukawa, or negmass")
+	}
+
 	return nil
 }
 

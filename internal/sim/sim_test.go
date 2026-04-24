@@ -82,6 +82,62 @@ func TestHoverControllerKeepsAltitudeBounded(t *testing.T) {
 	}
 }
 
+func TestYukawaModelEmitsDiagnostics(t *testing.T) {
+	cfg := baseScenario(true)
+	cfg.Duration = 2.0
+	cfg.GravityModel.Type = "yukawa"
+	cfg.GravityModel.Yukawa.Alpha = 0.2
+	cfg.GravityModel.Yukawa.Lambda = 1.0e7
+
+	var last Sample
+	_, err := Run(cfg, func(s Sample) error {
+		last = s
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.GravityModel != "yukawa" {
+		t.Fatalf("expected gravity model yukawa, got %q", last.GravityModel)
+	}
+	if !(last.YukawaRepulsionPrimary > 0) {
+		t.Fatalf("expected positive primary Yukawa repulsion, got %.6f", last.YukawaRepulsionPrimary)
+	}
+	if math.Abs(last.CouplingC-1.0) > 1e-12 {
+		t.Fatalf("non-coupling run should keep C=1, got %f", last.CouplingC)
+	}
+}
+
+func TestNegMassC2RunawayFlag(t *testing.T) {
+	cfg := baseScenario(false)
+	cfg.Duration = 1.0
+	cfg.GravityModel.Type = "negmass"
+	cfg.GravityModel.NegMass.Convention = "C2"
+	cfg.GravityModel.NegMass.QGCraft = -1
+	cfg.GravityModel.NegMass.RunawayAccelLimit = 5
+
+	var last Sample
+	_, err := Run(cfg, func(s Sample) error {
+		last = s
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.GravityModel != "negmass" {
+		t.Fatalf("expected gravity model negmass, got %q", last.GravityModel)
+	}
+	if last.InertialMassSign != -1 {
+		t.Fatalf("expected inertial sign -1 for C2 with negative qg, got %.1f", last.InertialMassSign)
+	}
+	if !last.RunawayAccelFlag {
+		t.Fatalf("expected runaway acceleration flag to be set")
+	}
+	if !last.RunawayExpectedUnderC2 {
+		t.Fatalf("expected runaway to be tagged as C2-expected")
+	}
+}
+
 func baseScenario(couplerEnabled bool) config.Scenario {
 	return config.Scenario{
 		Name:     "test",

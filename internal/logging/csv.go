@@ -23,10 +23,14 @@ func NewCSVLogger(out io.Writer) (*CSVLogger, error) {
 		"altitude", "vertical_vel",
 		"g_raw_x", "g_raw_y", "g_raw_z", "g_raw_mag",
 		"g_eff_x", "g_eff_y", "g_eff_z", "g_eff_mag",
+		"gravity_model",
 		"c", "k", "phi",
 		"phase_error", "lock_quality",
 		"omega_drive", "omega_0",
 		"drive_power", "energy",
+		"yukawa_alpha", "yukawa_lambda", "yukawa_repulsion_primary", "yukawa_kernel_primary",
+		"negmass_convention", "qg_craft", "qg_primary", "inertial_mass_sign",
+		"runaway_accel_mag", "runaway_accel_limit", "runaway_accel_flag", "runaway_expected_c2",
 		"grav_power",
 	}
 	if err := w.Write(header); err != nil {
@@ -43,10 +47,14 @@ func (l *CSVLogger) Sample(s sim.Sample) error {
 		f64(s.Altitude), f64(s.VerticalVel),
 		f64(s.GRaw.X), f64(s.GRaw.Y), f64(s.GRaw.Z), f64(s.GRawMag),
 		f64(s.EffectiveG.X), f64(s.EffectiveG.Y), f64(s.EffectiveG.Z), f64(s.EffectiveGMag),
+		s.GravityModel,
 		f64(s.CouplingC), f64(s.CouplingK), f64(s.CouplingPhi),
 		f64(s.PhaseError), f64(s.LockQuality),
 		f64(s.OmegaDrive), f64(s.Omega0),
 		f64(s.DrivePower), f64(s.Energy),
+		f64(s.YukawaAlpha), f64(s.YukawaLambda), f64(s.YukawaRepulsionPrimary), f64(s.YukawaKernelPrimary),
+		s.NegMassConvention, f64(s.QGCraft), f64(s.QGPrimary), f64(s.InertialMassSign),
+		f64(s.RunawayAccelMag), f64(s.RunawayAccelLimit), b01(s.RunawayAccelFlag), b01(s.RunawayExpectedUnderC2),
 		f64(s.GravPower),
 	}
 	return l.w.Write(record)
@@ -66,4 +74,11 @@ func f64(v float64) string {
 
 func itoa(v int) string {
 	return strconv.Itoa(v)
+}
+
+func b01(v bool) string {
+	if v {
+		return "1"
+	}
+	return "0"
 }

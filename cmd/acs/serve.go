@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/example/acs/internal/config"
@@ -25,6 +26,8 @@ import (
 )
 
 var slugRe = regexp.MustCompile(`^[a-z0-9_-]+$`)
+var noteSlugRe = regexp.MustCompile(`^[A-Za-z0-9_/-]+$`)
+var noteLinkRe = regexp.MustCompile(`\[\[([A-Za-z0-9_/-]+)\]\]`)
 
 type paperServer struct {
 	tmpl         *template.Template
@@ -32,6 +35,10 @@ type paperServer struct {
 	paperDir     string
 	assetsDir    string
 	scenariosDir string
+	notesDir     string
+
+	gameMu       sync.Mutex
+	gameSessions map[string]*gameSession
 }
 
 type pageData struct {
@@ -39,11 +46,47 @@ type pageData struct {
 }
 
 type scenarioInfo struct {
-	Name     string  `json:"name"`
-	Path     string  `json:"path"`
-	Dt       float64 `json:"dt"`
-	Duration float64 `json:"duration"`
-	LogEvery int     `json:"log_every"`
+	Name         string  `json:"name"`
+	Path         string  `json:"path"`
+	Dt           float64 `json:"dt"`
+	Duration     float64 `json:"duration"`
+	LogEvery     int     `json:"log_every"`
+	GravityModel string  `json:"gravity_model"`
+}
+
+type notesTreeNode struct {
+	Name     string          `json:"name"`
+	Slug     string          `json:"slug,omitempty"`
+	Kind     string          `json:"kind"`
+	Children []notesTreeNode `json:"children,omitempty"`
+}
+
+type notesDocument struct {
+	Slug      string   `json:"slug"`
+	Title     string   `json:"title"`
+	Body      string   `json:"body"`
+	Source    string   `json:"source_path"`
+	Links     []string `json:"links"`
+	UpdatedAt string   `json:"updated_at"`
+}
+
+type notesTreeItem struct {
+	Name   string
+	Slug   string
+	Kind   string
+	Depth  int
+	Active bool
+}
+
+type notesPageData struct {
+	Title          string
+	CurrentSlug    string
+	CurrentTitle   string
+	CurrentSource  string
+	CurrentUpdated string
+	CurrentBody    string
+	CascadeLinks   []string
+	TreeItems      []notesTreeItem
 }
 
 func serveCmd(args []string) error {
@@ -51,21 +94,27 @@ func serveCmd(args []string) error {
 	addr := fs.String("addr", ":8080", "HTTP listen address")
 	scenariosDir := fs.String("scenarios", "scenarios", "scenario directory")
 	webDir := fs.String("web", "web", "web assets/templates root directory")
+	notesDir := fs.String("notes", "notes", "notes directory")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	s, err := newPaperServer(*webDir, *scenariosDir)
+	s, err := newPaperServer(*webDir, *scenariosDir, *notesDir)
 	if err != nil {
 		return err
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleHome)
+	mux.HandleFunc("/notes", s.handleNotesPage)
+	mux.HandleFunc("/notes/", s.handleNotesPage)
 	mux.HandleFunc("/paper/", s.handlePaperSection)
 	mux.HandleFunc("/api/scenarios", s.handleScenarios)
 	mux.HandleFunc("/api/sim/stream", s.handleSimStream)
 	mux.HandleFunc("/api/sim/export", s.handleSimExport)
+	mux.HandleFunc("/api/game/start", s.handleGameStart)
+	mux.HandleFunc("/api/game/step", s.handleGameStep)
+	mux.HandleFunc("/api/game/stop", s.handleGameStop)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
@@ -73,7 +122,7 @@ func serveCmd(args []string) error {
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir(s.assetsDir))))
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/assets/") || strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/paper/") || r.URL.Path == "/healthz" || r.URL.Path == "/" {
+		if strings.HasPrefix(r.URL.Path, "/assets/") || strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/paper/") || strings.HasPrefix(r.URL.Path, "/notes") || r.URL.Path == "/healthz" || r.URL.Path == "/" {
 			mux.ServeHTTP(w, r)
 			return
 		}
@@ -85,7 +134,7 @@ func serveCmd(args []string) error {
 	return http.ListenAndServe(*addr, handler)
 }
 
-func newPaperServer(webDir, scenariosDir string) (*paperServer, error) {
+func newPaperServer(webDir, scenariosDir, notesDir string) (*paperServer, error) {
 	tplPath := filepath.Join(webDir, "templates", "index.html")
 	tpl, err := template.ParseFiles(tplPath)
 	if err != nil {
@@ -98,6 +147,8 @@ func newPaperServer(webDir, scenariosDir string) (*paperServer, error) {
 		paperDir:     filepath.Join(webDir, "paper"),
 		assetsDir:    filepath.Join(webDir, "static", "assets"),
 		scenariosDir: scenariosDir,
+		notesDir:     notesDir,
+		gameSessions: make(map[string]*gameSession),
 	}
 
 	if _, err := os.Stat(s.assetsDir); err != nil {
@@ -105,6 +156,9 @@ func newPaperServer(webDir, scenariosDir string) (*paperServer, error) {
 	}
 	if _, err := os.Stat(s.paperDir); err != nil {
 		return nil, fmt.Errorf("paper sections directory missing at %s: %w", s.paperDir, err)
+	}
+	if _, err := os.Stat(s.notesDir); err != nil {
+		return nil, fmt.Errorf("notes directory missing at %s: %w", s.notesDir, err)
 	}
 	return s, nil
 }
@@ -155,7 +209,249 @@ func (s *paperServer) readSection(slug string) (string, error) {
 	return string(b), nil
 }
 
-func (s *paperServer) handleScenarios(w http.ResponseWriter, _ *http.Request) {
+func (s *paperServer) handleNotesPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slug := normalizeNoteSlug(strings.TrimPrefix(r.URL.Path, "/notes"))
+	doc, err := s.loadNotesDocument(slug)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	tree, err := s.buildNotesTree()
+	if err != nil {
+		http.Error(w, "failed to load notes tree", http.StatusInternalServerError)
+		return
+	}
+
+	items := flattenNotesTree(tree, doc.Slug)
+	page := notesPageData{
+		Title:          fmt.Sprintf("Cascading Notes | %s", doc.Title),
+		CurrentSlug:    doc.Slug,
+		CurrentTitle:   doc.Title,
+		CurrentSource:  doc.Source,
+		CurrentUpdated: doc.UpdatedAt,
+		CurrentBody:    doc.Body,
+		CascadeLinks:   doc.Links,
+		TreeItems:      items,
+	}
+
+	notesTemplatePath := filepath.Join(s.webDir, "templates", "notes.html")
+	tpl, err := template.New("notes.html").Funcs(template.FuncMap{
+		"mul": func(a, b int) int { return a * b },
+	}).ParseFiles(notesTemplatePath)
+	if err != nil {
+		http.Error(w, "failed to parse notes template", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tpl.ExecuteTemplate(w, "notes.html", page); err != nil {
+		http.Error(w, "failed to render notes page", http.StatusInternalServerError)
+	}
+}
+
+func normalizeNoteSlug(raw string) string {
+	slug := strings.TrimSpace(raw)
+	slug = strings.TrimPrefix(slug, "/")
+	slug = strings.TrimSuffix(slug, "/")
+	slug = strings.TrimSpace(slug)
+	slug = strings.TrimSuffix(slug, ".md")
+	slug = strings.ReplaceAll(slug, "\\", "/")
+	if slug == "" {
+		return "overview"
+	}
+	return slug
+}
+
+func (s *paperServer) resolveNotePath(slug string) (string, string, error) {
+	slug = normalizeNoteSlug(slug)
+	if !noteSlugRe.MatchString(slug) {
+		return "", "", errors.New("invalid note slug")
+	}
+
+	rel := filepath.Clean(filepath.FromSlash(slug) + ".md")
+	if rel == "." || strings.HasPrefix(rel, "..") || strings.Contains(rel, string(filepath.Separator)+".."+string(filepath.Separator)) {
+		return "", "", errors.New("invalid note path")
+	}
+
+	path := filepath.Join(s.notesDir, rel)
+	if _, err := os.Stat(path); err == nil {
+		return slug, path, nil
+	}
+
+	relOverview := filepath.Clean(filepath.Join(filepath.FromSlash(slug), "overview.md"))
+	if relOverview == "." || strings.HasPrefix(relOverview, "..") || strings.Contains(relOverview, string(filepath.Separator)+".."+string(filepath.Separator)) {
+		return "", "", errors.New("invalid note path")
+	}
+	path = filepath.Join(s.notesDir, relOverview)
+	if _, err := os.Stat(path); err == nil {
+		return strings.TrimSuffix(filepath.ToSlash(relOverview), ".md"), path, nil
+	}
+
+	return "", "", os.ErrNotExist
+}
+
+func (s *paperServer) loadNotesDocument(slug string) (notesDocument, error) {
+	resolvedSlug, path, err := s.resolveNotePath(slug)
+	if err != nil {
+		return notesDocument{}, err
+	}
+
+	bodyBytes, err := os.ReadFile(path)
+	if err != nil {
+		return notesDocument{}, err
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return notesDocument{}, err
+	}
+
+	body := string(bodyBytes)
+	doc := notesDocument{
+		Slug:      resolvedSlug,
+		Title:     noteTitleFromBody(body, trimExt(filepath.Base(path))),
+		Body:      body,
+		Source:    filepath.ToSlash(path),
+		Links:     extractNoteLinks(body),
+		UpdatedAt: info.ModTime().UTC().Format(time.RFC3339),
+	}
+	return doc, nil
+}
+
+func noteTitleFromBody(body, fallback string) string {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			title := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			if title != "" {
+				return title
+			}
+		}
+	}
+	if fallback == "" {
+		return "Untitled Note"
+	}
+	return strings.ReplaceAll(fallback, "_", " ")
+}
+
+func extractNoteLinks(body string) []string {
+	matches := noteLinkRe.FindAllStringSubmatch(body, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(matches))
+	links := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		slug := normalizeNoteSlug(m[1])
+		if slug == "" {
+			continue
+		}
+		if _, ok := seen[slug]; ok {
+			continue
+		}
+		seen[slug] = struct{}{}
+		links = append(links, slug)
+	}
+	return links
+}
+
+func (s *paperServer) buildNotesTree() ([]notesTreeNode, error) {
+	return scanNotesDir(s.notesDir, "")
+}
+
+func scanNotesDir(root, rel string) ([]notesTreeNode, error) {
+	dir := filepath.Join(root, rel)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := make([]notesTreeNode, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+
+		relPath := filepath.Join(rel, name)
+		if entry.IsDir() {
+			children, err := scanNotesDir(root, relPath)
+			if err != nil {
+				continue
+			}
+			nodes = append(nodes, notesTreeNode{
+				Name:     name,
+				Kind:     "dir",
+				Children: children,
+			})
+			continue
+		}
+
+		if !strings.HasSuffix(strings.ToLower(name), ".md") {
+			continue
+		}
+
+		path := filepath.Join(root, relPath)
+		body, err := os.ReadFile(path)
+		title := strings.TrimSuffix(name, ".md")
+		if err == nil {
+			title = noteTitleFromBody(string(body), title)
+		}
+		nodes = append(nodes, notesTreeNode{
+			Name: title,
+			Slug: strings.TrimSuffix(filepath.ToSlash(relPath), ".md"),
+			Kind: "note",
+		})
+	}
+
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].Kind != nodes[j].Kind {
+			return nodes[i].Kind == "dir"
+		}
+		return strings.ToLower(nodes[i].Name) < strings.ToLower(nodes[j].Name)
+	})
+	return nodes, nil
+}
+
+func flattenNotesTree(nodes []notesTreeNode, activeSlug string) []notesTreeItem {
+	items := make([]notesTreeItem, 0, len(nodes))
+	var walk func(parts []notesTreeNode, depth int)
+	walk = func(parts []notesTreeNode, depth int) {
+		for _, node := range parts {
+			item := notesTreeItem{
+				Name:   node.Name,
+				Slug:   node.Slug,
+				Kind:   node.Kind,
+				Depth:  depth,
+				Active: node.Kind == "note" && node.Slug == activeSlug,
+			}
+			items = append(items, item)
+			if node.Kind == "dir" && len(node.Children) > 0 {
+				walk(node.Children, depth+1)
+			}
+		}
+	}
+	walk(nodes, 0)
+	return items
+}
+
+func (s *paperServer) handleScenarios(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	choices, err := discoverScenarios(s.scenariosDir)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -164,17 +460,18 @@ func (s *paperServer) handleScenarios(w http.ResponseWriter, _ *http.Request) {
 
 	infos := make([]scenarioInfo, 0, len(choices))
 	for _, choice := range choices {
-		cfg, err := config.Load(choice.Path)
-		if err != nil {
-			continue
-		}
-		infos = append(infos, scenarioInfo{
+		info := scenarioInfo{
 			Name:     choice.Name,
 			Path:     choice.Path,
-			Dt:       cfg.Dt,
-			Duration: cfg.Duration,
-			LogEvery: cfg.LogEvery,
-		})
+		}
+		cfg, err := config.Load(choice.Path)
+		if err == nil {
+			info.Dt = cfg.Dt
+			info.Duration = cfg.Duration
+			info.LogEvery = cfg.LogEvery
+			info.GravityModel = cfg.GravityModel.Type
+		}
+		infos = append(infos, info)
 	}
 
 	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
@@ -239,6 +536,7 @@ func (s *paperServer) handleSimStream(w http.ResponseWriter, r *http.Request) {
 		"dt":             cfg.Dt,
 		"duration":       cfg.Duration,
 		"log_every":      cfg.LogEvery,
+		"gravity_model":  cfg.GravityModel.Type,
 		"playback_speed": speed,
 	}
 	if err := writePayload(start); err != nil {
@@ -278,16 +576,20 @@ func (s *paperServer) handleSimStream(w http.ResponseWriter, r *http.Request) {
 
 		sampleCount++
 		payload := map[string]any{
-			"type":         "sample",
-			"step":         sample.Step,
-			"time":         sample.Time,
-			"altitude":     sample.Altitude,
-			"vertical_vel": sample.VerticalVel,
-			"coupling_c":   sample.CouplingC,
-			"coupling_k":   sample.CouplingK,
-			"lock_quality": sample.LockQuality,
-			"energy":       sample.Energy,
-			"drive_power":  sample.DrivePower,
+			"type":                     "sample",
+			"step":                     sample.Step,
+			"time":                     sample.Time,
+			"altitude":                 sample.Altitude,
+			"vertical_vel":             sample.VerticalVel,
+			"gravity_model":            sample.GravityModel,
+			"coupling_c":               sample.CouplingC,
+			"coupling_k":               sample.CouplingK,
+			"lock_quality":             sample.LockQuality,
+			"energy":                   sample.Energy,
+			"drive_power":              sample.DrivePower,
+			"yukawa_repulsion_primary": sample.YukawaRepulsionPrimary,
+			"qg_primary":               sample.QGPrimary,
+			"runaway_flag":             sample.RunawayAccelFlag,
 		}
 		return writePayload(payload)
 	}

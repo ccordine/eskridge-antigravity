@@ -61,4 +61,8 @@
   .chart-canvas {
     @apply block h-44 w-full rounded-lg bg-[#fffaf0];
   }
+
+  .flight-canvas {
+    @apply block h-64 w-full rounded-lg border border-paper-edge/70 bg-[#fffaf0];
+  }
 }
