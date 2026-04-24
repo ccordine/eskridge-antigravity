@@ -1,10 +1,19 @@
 services:
-  acs-web:
+  acs-app:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${IMAGE_NAME:-acs-web}:latest
-    container_name: ${CONTAINER_NAME:-acs-web}
+    image: ${IMAGE_NAME:-acs-app}:latest
+    restart: unless-stopped
+    expose:
+      - "8080"
+
+  acs-web:
+    image: nginx:1.27-alpine
+    depends_on:
+      - acs-app
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "127.0.0.1:${PORT:-9008}:80"
+    volumes:
+      - ./ops/nginx.conf:/etc/nginx/conf.d/default.conf:ro

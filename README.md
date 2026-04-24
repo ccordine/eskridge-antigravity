@@ -68,10 +68,17 @@ Then open `http://127.0.0.1:8090` to watch live charts.
 Build and run via compose:
 
 ```bash
-docker compose up --build
+PORT=9008 docker compose up --build -d
 ```
 
-The app is exposed on `${PORT:-8080}`.
+The web app is exposed on `127.0.0.1:${PORT:-9008}` through Nginx.
+The Go app is internal-only on the compose network (`acs-app:8080`), with no host port binding.
+
+If you previously had a conflicting container name from older config:
+
+```bash
+docker rm -f acs-web 2>/dev/null || true
+```
 
 ## Core guarantees
 
