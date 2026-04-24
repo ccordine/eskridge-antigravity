@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply min-h-full;
+  }
+
+  body {
+    @apply bg-paper-bg text-paper-ink font-body antialiased;
+    background-image:
+      radial-gradient(circle at 10% 0%, rgba(15, 106, 115, 0.12), transparent 30%),
+      radial-gradient(circle at 100% 0%, rgba(155, 77, 30, 0.2), transparent 36%),
+      linear-gradient(180deg, #fff9ec 0%, #f4efe3 30%, #eee6d8 100%);
+  }
+
+  ::selection {
+    @apply bg-paper-accent/20;
+  }
+}
+
+@layer components {
+  .paper-shell {
+    @apply relative mx-auto w-full max-w-7xl p-5 md:p-8;
+  }
+
+  .paper-frame {
+    @apply rounded-3xl border border-paper-edge/70 bg-[#fffdf7]/95 shadow-folio;
+  }
+
+  .paper-prose p {
+    @apply mb-4 leading-8 text-paper-ink/90;
+  }
+
+  .paper-prose h2 {
+    @apply font-display text-2xl text-paper-ink md:text-3xl;
+  }
+
+  .paper-prose h3 {
+    @apply font-display text-xl text-paper-ink;
+  }
+
+  .paper-nav-link {
+    @apply rounded-xl border border-paper-edge/70 bg-white/70 px-3 py-2 text-sm font-display tracking-wide text-paper-ink transition hover:-translate-y-0.5 hover:border-paper-cool/70 hover:bg-white;
+  }
+
+  .stat-card {
+    @apply rounded-xl border border-paper-edge/80 bg-white px-3 py-2;
+  }
+
+  .chart-panel {
+    @apply rounded-2xl border border-paper-edge/80 bg-white/90 p-3;
+  }
+
+  .chart-title {
+    @apply mb-2 font-display text-sm tracking-wide text-paper-ink/80;
+  }
+
+  .chart-canvas {
+    @apply block h-44 w-full rounded-lg bg-[#fffaf0];
+  }
+}

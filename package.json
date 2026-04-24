@@ -1,0 +1,21 @@
+{
+  "name": "acs-webapp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Interactive research paper frontend for ACS",
+  "scripts": {
+    "build": "npm run build:css && npm run build:js",
+    "build:css": "tailwindcss -i ./web/src/styles.css -o ./web/static/assets/app.css --minify",
+    "build:js": "browserify ./web/src/app.js -o ./web/static/assets/app.js",
+    "dev:css": "tailwindcss -i ./web/src/styles.css -o ./web/static/assets/app.css --watch",
+    "dev:js": "watchify ./web/src/app.js -o ./web/static/assets/app.js -v"
+  },
+  "dependencies": {
+    "recyclrjs": "^1.0.0"
+  },
+  "devDependencies": {
+    "browserify": "^17.0.0",
+    "tailwindcss": "^3.4.17",
+    "watchify": "^4.0.0"
+  }
+}

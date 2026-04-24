@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-04-24T05:21:03Z",
+  "scenario": "hover_attempt",
+  "seed": 2,
+  "dt": 0.01,
+  "duration": 40,
+  "steps": 4000,
+  "version": "(devel)",
+  "config_sha256": "9f868f793a0cd318de7cb3f4ef63fd19b93557f96f3979e05ad61ccf09d70427"
+}

@@ -1,0 +1,37 @@
+<article id="paper-fragment" class="paper-prose">
+  <h2>Core Claim and Coupling Math (Eskridge Force)</h2>
+  <p class="text-sm text-paper-ink/75">Within this paper, the coupling mode described below is the named Eskridge Force hypothesis, with Amy Eskridge interview context informing terminology and framing.</p>
+
+  <div class="rounded-2xl border border-paper-edge/70 bg-white p-4">
+    <h3>4) The Coupling Knob: Phase and Gain</h3>
+    <p>A single scalar <span class="font-mono">C</span> is too magical to control directly. We define phase-based coupling:</p>
+    <p class="font-mono text-sm">C = k cos(phi)</p>
+    <ul class="ml-5 list-disc space-y-1 text-sm leading-7">
+      <li><span class="font-mono">k</span>: coupling strength (gain)</li>
+      <li><span class="font-mono">phi</span>: coupling phase (polarity)</li>
+    </ul>
+    <p class="mb-0 text-sm">Interpretation: <span class="font-mono">phi = 0</span> gives attraction, <span class="font-mono">phi = pi/2</span> gives cancel/hover, and <span class="font-mono">phi = pi</span> gives repulsion.</p>
+  </div>
+
+  <div class="mt-4 rounded-2xl border border-paper-edge/70 bg-[#f7fbfc] p-4">
+    <h3>5) Why Resonance and Phase-Lock Are Mandatory</h3>
+    <p>If anti-gravity is not a natural ground state, it must be actively maintained. The systems logic mirrors known control phenomena:</p>
+    <ul class="ml-5 list-disc space-y-1 text-sm leading-7">
+      <li>PLL: stable lock requires continuous correction.</li>
+      <li>High-Q resonators: large amplitude from small drive, narrow stability windows.</li>
+      <li>Parametric stabilization: unstable equilibria can be stabilized by periodic drive.</li>
+      <li>Hovering drones: stop feedback and they fall.</li>
+    </ul>
+    <p class="mb-0">In this model, anti-gravity is an operating mode, not a passive material property. If drive stops or lock fails, coupling relaxes to default and gravity returns.</p>
+  </div>
+
+  <div class="mt-4 rounded-2xl border border-paper-edge/70 bg-white p-4">
+    <h3>6) The Actuator Stack: Resonator -> Lock -> Coupling</h3>
+    <ol class="ml-5 list-decimal space-y-1 text-sm leading-7">
+      <li>Resonator: a high-Q driven oscillator generates coherent state <span class="font-mono">Z</span>.</li>
+      <li>Lock loop: PLL-like controller tracks drift/noise and maintains phase relation.</li>
+      <li>Coupling output: <span class="font-mono">k proportional to |Z|</span>, and <span class="font-mono">phi proportional to arg(Z) + phi_bias</span>.</li>
+    </ol>
+    <p class="mb-0 text-sm">This prevents hidden "just set C to zero" shortcuts.</p>
+  </div>
+</article>

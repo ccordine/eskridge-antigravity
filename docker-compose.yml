@@ -1,0 +1,10 @@
+services:
+  acs-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_NAME:-acs-web}:latest
+    container_name: ${CONTAINER_NAME:-acs-web}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
