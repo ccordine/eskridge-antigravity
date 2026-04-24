@@ -203,3 +203,6 @@ Alcubierre warp: move spacetime (contract in front, expand behind).
 Geodesic/gravity drive: keep spacetime mostly "normal", but create a local curvature/gradient so your natural free-fall path goes where you want.
 
 So really this gives us access to warp drives for interstellar travel. Shout out to PBS Spacetime, who I will be watching all night about this now
+
+
+Now power? How does that work? Bob Lazar talks about this element that can be made with hydron colliders, but is unstable, did you know that oscilation and resonnance can make things stabilize? Built in compact nuclear power
