@@ -31,6 +31,7 @@ const state = {
       manualYaw: 0,
       autoAmp: 0,
       autoPhi: 0,
+      autoYaw: 0,
       finalAmp: 0,
       finalPhi: 0,
       finalYaw: 0
@@ -488,6 +489,15 @@ function maybeInitLab() {
     scenario: root.querySelector('[data-scenario-select]'),
     speed: root.querySelector('[data-game-speed]'),
     startGround: root.querySelector('[data-game-start-ground]'),
+    stickAmp: root.querySelector('[data-stick-amp]'),
+    stickPhi: root.querySelector('[data-stick-phi]'),
+    stickYaw: root.querySelector('[data-stick-yaw]'),
+    holdAmpEnabled: root.querySelector('[data-hold-amp-enabled]'),
+    holdAmpTarget: root.querySelector('[data-hold-amp-target]'),
+    holdPhiEnabled: root.querySelector('[data-hold-phi-enabled]'),
+    holdPhiTarget: root.querySelector('[data-hold-phi-target]'),
+    holdYawEnabled: root.querySelector('[data-hold-yaw-enabled]'),
+    holdYawTarget: root.querySelector('[data-hold-yaw-target]'),
     autoTrim: root.querySelector('[data-auto-trim]'),
     autoWeight: root.querySelector('[data-auto-weight]'),
     autoVertical: root.querySelector('[data-auto-vertical]'),
@@ -547,6 +557,21 @@ function readNumberInput(node, fallback) {
   return raw;
 }
 
+function wrapRadians(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  let out = value;
+  const twoPi = Math.PI * 2;
+  while (out > Math.PI) {
+    out -= twoPi;
+  }
+  while (out < -Math.PI) {
+    out += twoPi;
+  }
+  return out;
+}
+
 function localVerticalMetrics(sample) {
   if (!sample || !sample.position || !sample.primary_position || !sample.g_raw || !sample.effective_g) {
     return null;
@@ -577,6 +602,73 @@ function setStat(key, value) {
   node.textContent = value;
 }
 
+function setInputNumber(node, value, digits = 3) {
+  if (!node || !Number.isFinite(value)) {
+    return;
+  }
+  node.value = value.toFixed(digits);
+}
+
+function centerSticks() {
+  if (state.refs?.stickAmp) {
+    state.refs.stickAmp.value = '0';
+  }
+  if (state.refs?.stickPhi) {
+    state.refs.stickPhi.value = '0';
+  }
+  if (state.refs?.stickYaw) {
+    state.refs.stickYaw.value = '0';
+  }
+  setStatus('sticks centered');
+}
+
+function captureCurrentTargets() {
+  const sample = state.game.latest;
+  if (!sample) {
+    setStatus('no sample to capture yet');
+    return;
+  }
+  setInputNumber(state.refs?.holdAmpTarget, Number.parseFloat(sample.control_amp_target), 3);
+  setInputNumber(state.refs?.holdPhiTarget, Number.parseFloat(sample.control_theta_target), 3);
+  setInputNumber(state.refs?.holdYawTarget, Number.parseFloat(sample.control_axis_yaw), 3);
+  setStatus('captured current coupler targets');
+}
+
+function applyAssistPreset(name) {
+  const key = String(name || '').toLowerCase();
+  if (!state.refs) {
+    return;
+  }
+  if (state.refs.autoTrim) {
+    state.refs.autoTrim.checked = true;
+  }
+
+  switch (key) {
+    case 'hover':
+      setInputNumber(state.refs.autoWeight, 1.0, 2);
+      setInputNumber(state.refs.autoVertical, 0.0, 2);
+      setStatus('assist preset: hover');
+      break;
+    case 'neutral':
+      setInputNumber(state.refs.autoWeight, 0.0, 2);
+      setInputNumber(state.refs.autoVertical, 0.0, 2);
+      setStatus('assist preset: neutral');
+      break;
+    case 'ascend':
+      setInputNumber(state.refs.autoWeight, -0.15, 2);
+      setInputNumber(state.refs.autoVertical, 4.0, 2);
+      setStatus('assist preset: ascend');
+      break;
+    case 'descend':
+      setInputNumber(state.refs.autoWeight, 1.2, 2);
+      setInputNumber(state.refs.autoVertical, -3.0, 2);
+      setStatus('assist preset: descend');
+      break;
+    default:
+      break;
+  }
+}
+
 function updateHUD(sample) {
   if (!state.refs || !state.refs.stats) {
     return;
@@ -593,7 +685,10 @@ function updateHUD(sample) {
   setStat('altitude', `${formatNumber(sample.altitude, 1)} m`);
   setStat('speed', `${formatNumber(sample.speed, 2)} m/s`);
   setStat('vertical', `${formatNumber(sample.vertical_vel, 2)} m/s`);
-  setStat('model', sample.gravity_model || '-');
+  const modelLabel = sample.coupler_enabled
+    ? `${sample.gravity_model || '-'} (coupler on)`
+    : `${sample.gravity_model || '-'} (coupler off)`;
+  setStat('model', modelLabel);
 
   const mass = Number.parseFloat(sample.craft_mass);
   const vertical = localVerticalMetrics(sample);
@@ -635,8 +730,12 @@ function updateHUD(sample) {
 
   const last = state.input.lastControl || {};
   setStat('control_mode', last.mode || 'manual');
+  setStat('manual_amp', formatNumber(last.manualAmp, 2));
+  setStat('manual_phi', formatNumber(last.manualPhi, 2));
+  setStat('manual_yaw', formatNumber(last.manualYaw, 2));
   setStat('auto_amp', formatNumber(last.autoAmp, 2));
   setStat('auto_phi', formatNumber(last.autoPhi, 2));
+  setStat('auto_yaw', formatNumber(last.autoYaw, 2));
 }
 
 function pushTrail(sample) {
@@ -805,6 +904,7 @@ async function startGameSession() {
       manualYaw: 0,
       autoAmp: 0,
       autoPhi: 0,
+      autoYaw: 0,
       finalAmp: 0,
       finalPhi: 0,
       finalYaw: 0
@@ -819,7 +919,7 @@ async function startGameSession() {
     const mode = String(state.game.latest?.gravity_model || '').toLowerCase();
     const couplerEnabled = Boolean(state.game.latest?.coupler_enabled);
     if (!couplerEnabled) {
-      setStatus(`running ${scenario} • coupler off • A/W/Q controls are telemetry-only here`);
+      setStatus(`running ${scenario} • coupler off • pilot/assist controls are telemetry-only here`);
     } else if (mode && mode !== 'coupling') {
       setStatus(`running ${scenario} • ${mode} model • coupler controls are telemetry-only here`);
     } else {
@@ -881,18 +981,57 @@ async function resetGameSession() {
 
 function currentControlPayload(sample = state.game.latest) {
   const keys = state.input.keys;
-  const manualAmp = (keys.d ? 1 : 0) + (keys.a ? -1 : 0);
-  const manualPhi = (keys.w ? 1 : 0) + (keys.s ? -1 : 0);
-  const manualYaw = (keys.e ? 1 : 0) + (keys.q ? -1 : 0);
+  const keyAmp = (keys.d ? 1 : 0) + (keys.a ? -1 : 0);
+  const keyPhi = (keys.w ? 1 : 0) + (keys.s ? -1 : 0);
+  const keyYaw = (keys.e ? 1 : 0) + (keys.q ? -1 : 0);
+  const stickAmp = clampUnit(readNumberInput(state.refs?.stickAmp, 0));
+  const stickPhi = clampUnit(readNumberInput(state.refs?.stickPhi, 0));
+  const stickYaw = clampUnit(readNumberInput(state.refs?.stickYaw, 0));
+
+  const manualAmp = clampUnit(keyAmp + stickAmp);
+  const manualPhi = clampUnit(keyPhi + stickPhi);
+  const manualYaw = clampUnit(keyYaw + stickYaw);
 
   let autoAmp = 0;
   let autoPhi = 0;
+  let autoYaw = 0;
   let mode = 'manual';
 
-  const autoTrimEnabled = Boolean(state.refs?.autoTrim?.checked);
   const couplerEnabled = Boolean(sample?.coupler_enabled);
   const couplingModel = String(sample?.gravity_model || '').toLowerCase() === 'coupling';
-  if (autoTrimEnabled && couplerEnabled && couplingModel) {
+  const canAssist = couplerEnabled && couplingModel;
+
+  const holdAmpEnabled = Boolean(state.refs?.holdAmpEnabled?.checked);
+  const holdPhiEnabled = Boolean(state.refs?.holdPhiEnabled?.checked);
+  const holdYawEnabled = Boolean(state.refs?.holdYawEnabled?.checked);
+  const targetAssistEnabled = canAssist && (holdAmpEnabled || holdPhiEnabled || holdYawEnabled);
+  const autoTrimEnabled = Boolean(state.refs?.autoTrim?.checked) && canAssist;
+
+  if (targetAssistEnabled) {
+    const ampTarget = readNumberInput(state.refs?.holdAmpTarget, Number.parseFloat(sample?.control_amp_target));
+    const phiTarget = readNumberInput(state.refs?.holdPhiTarget, Number.parseFloat(sample?.control_theta_target));
+    const yawTarget = readNumberInput(state.refs?.holdYawTarget, Number.parseFloat(sample?.control_axis_yaw));
+
+    const ampCurrent = Number.parseFloat(sample?.control_amp_target);
+    const phiCurrent = Number.parseFloat(sample?.control_theta_target);
+    const yawCurrent = Number.parseFloat(sample?.control_axis_yaw);
+
+    if (holdAmpEnabled && Number.isFinite(ampTarget) && Number.isFinite(ampCurrent) && !autoTrimEnabled) {
+      autoAmp += clampUnit((ampTarget - ampCurrent) / 0.35);
+    }
+    if (holdPhiEnabled && Number.isFinite(phiTarget) && Number.isFinite(phiCurrent) && !autoTrimEnabled) {
+      autoPhi += clampUnit(wrapRadians(phiTarget - phiCurrent) / 0.6);
+    }
+    if (holdYawEnabled && Number.isFinite(yawTarget) && Number.isFinite(yawCurrent)) {
+      autoYaw += clampUnit(wrapRadians(yawTarget - yawCurrent) / 0.6);
+    }
+
+    if (!autoTrimEnabled) {
+      mode = 'assist-targets';
+    }
+  }
+
+  if (autoTrimEnabled) {
     const vertical = localVerticalMetrics(sample);
     const weightRatio = vertical ? vertical.ratio : NaN;
     const targetWeight = readNumberInput(state.refs?.autoWeight, 1.0);
@@ -904,14 +1043,14 @@ function currentControlPayload(sample = state.game.latest) {
     const verticalErr = Number.isFinite(verticalVel) ? (targetVertical - verticalVel) : 0;
     const lockErr = Number.isFinite(lockQuality) ? (0.9 - lockQuality) : 0;
 
-    autoPhi = clampUnit((weightErr * 0.9) + (verticalErr * 0.04));
-    autoAmp = clampUnit(lockErr * 1.1);
-    mode = 'assist';
+    autoPhi += clampUnit((weightErr * 0.9) + (verticalErr * 0.04));
+    autoAmp += clampUnit(lockErr * 1.1);
+    mode = 'assist-ship';
   }
 
   const ampAxis = clampUnit(manualAmp + autoAmp);
   const phiAxis = clampUnit(manualPhi + autoPhi);
-  const yawAxis = clampUnit(manualYaw);
+  const yawAxis = clampUnit(manualYaw + autoYaw);
 
   state.input.lastControl = {
     mode,
@@ -920,6 +1059,7 @@ function currentControlPayload(sample = state.game.latest) {
     manualYaw,
     autoAmp,
     autoPhi,
+    autoYaw,
     finalAmp: ampAxis,
     finalPhi: phiAxis,
     finalYaw: yawAxis
@@ -1025,6 +1165,26 @@ function setupEvents() {
     if (event.target.closest('[data-game-stop]')) {
       event.preventDefault();
       void stopGameSession(true, 'stopped');
+      return;
+    }
+
+    if (event.target.closest('[data-stick-center]')) {
+      event.preventDefault();
+      centerSticks();
+      return;
+    }
+
+    if (event.target.closest('[data-hold-capture]')) {
+      event.preventDefault();
+      captureCurrentTargets();
+      return;
+    }
+
+    const presetButton = event.target.closest('[data-assist-preset]');
+    if (presetButton) {
+      event.preventDefault();
+      const preset = presetButton.getAttribute('data-assist-preset') || '';
+      applyAssistPreset(preset);
       return;
     }
 
