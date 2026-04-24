@@ -166,3 +166,40 @@ Step 5 - Land / disengage
 * Move φ back toward 0 and/or reduce k
 * Return C \to 1 gradually (soft re-coupling)
 * Coupler off
+
+How do we orient ourselves towards the earth properly if we have decoupled from the earth?
+I would imagine we'd use a combination of spinning for a gyroscopic effect, I've thought about this a lot ever since I was a child, and you would essentially have the outside spin but a pod in the center that stays static, like a giant gyroscope
+You would also use the earth's EM field for orientation, knowing where north is, where south is
+Note that how this works is that you would generate a gravity field, and then you would arrange it in such a way that one side is falling, and that is how you get the movement, because it is falling but moving the source of gravity with it, like how a satelite works, but scaled to the extremes
+You could have some EM detector that would tell you which way to orient and then make your adjustments, you'd probably use the plasma field to change the shape of the body and resistance which will change the orientation, like wings that you can materialize, smart bodies capable of dynamic flight and movement
+
+Apparently because of this anti-gravity system, we may be able to also counteract our experience of the pressures of the earth, which makes a lot of sense, since we're using powered decoupling to counter gravities effects on us  or isolate us from the effects of gravity. That also leads me to wonder about this system and the capacity to phase through mass, as well as it's effect on time, I would expect that you would experience time differently since you are now decoupled from earth's gravity, which would explain the link to me of P47s and P52s that she seemed to allude to. Admittedly I've been thinking a LOT about Stone Ocean now
+
+How would we do interstellar travel?
+Well it would kind of be the opposite wouldn't it? What you would do is now find some other celestial body to sync to? Not really, while gravity and EM fields are effectively infinite, so you could go to whatever it is you see, and maybe you could use the the visual signal as something more complex than simply just looking at it, maybe it could be used in tandem with someway to isolate the EM and gravity fields? Not sure, but essentially what you would do to fly this thing would be playing around with the lean and the influence to earth's gravity, you could effectively play with physics in such a way that you slingshot yourself out into space by adjusting the antigravity system in just the right way, even coupling back to earth to use gravity to speed you up before decoupling and launching faster than before and using plasma and etc to remove wind resistance
+
+Conceptually, if you've seen how resonnace works on a metal surface, like a speaker and such, and you put sand on a metal plate, and you strike atuning fokr and affix it to the plate, the sand will form specific patterns. I hypothesize that if you were to fluctuate with those at the right frequency, you can use that to displace air around the surface to cut through wind resistance, essentially you'd keep cycling through a series of patterns at extreme speeds to where the air is gradually being removed and unable to return, if this is happening above the craft, it can also help with lift, but again if we're messing with anti-gravity shields around it, it really might not matter as much the shape in terms of air resistance, but I guess not, it does still have physical properties and still can crash into things, so this suggests that it would actually want to go and use such a system, now is it more or less power efficient than plasma and effectiveness too is important
+
+Though ofcourse once you can break from one body, you can break from another, and you can also use the body's gravity to slingshot you, and I think yeah this is a warp drive right?
+
+1) A geodesic drive (engineered free-fall)
+
+You’re not "pushing" the craft. You’re shaping the local field so the craft is always in free fall along a path you choose.
+
+- Inside feels like weightless "falling"
+- Outside sees you accelerate/curve because the path is curved
+
+In our example, you do that by shaping the coupling field: one side of the craft is effectively “more coupled” than the other, so the craft "falls" in that direction.
+
+2) An inertialess / internal-gravity drive (your ship "makes a gravity gradient")
+
+Same idea, framed as: you generate a local gravity-like gradient and ride it. It’s like continuously creating a downhill slope and letting yourself slide.
+
+That’s why "falling forward" is the right intuition.
+
+How it differs from Alcubierre-style warp
+
+Alcubierre warp: move spacetime (contract in front, expand behind).
+Geodesic/gravity drive: keep spacetime mostly "normal", but create a local curvature/gradient so your natural free-fall path goes where you want.
+
+So really this gives us access to warp drives for interstellar travel. Shout out to PBS Spacetime, who I will be watching all night about this now
