@@ -23,7 +23,18 @@ const state = {
   },
   input: {
     keys: Object.create(null),
-    lockAssist: true
+    lockAssist: true,
+    lastControl: {
+      mode: 'manual',
+      manualAmp: 0,
+      manualPhi: 0,
+      manualYaw: 0,
+      autoAmp: 0,
+      autoPhi: 0,
+      finalAmp: 0,
+      finalPhi: 0,
+      finalYaw: 0
+    }
   },
   exporting: false
 };
@@ -353,13 +364,15 @@ function normalizeScenario(item) {
   const gravityModel = typeof gravityModelRaw === 'string' && gravityModelRaw.trim()
     ? gravityModelRaw.trim().toLowerCase()
     : 'coupling';
+  const couplerEnabled = Boolean(item.coupler_enabled ?? item.CouplerEnabled);
 
   return {
     name,
     path: typeof pathRaw === 'string' ? pathRaw : '',
     dt: Number.isFinite(dt) ? dt : 0,
     duration: Number.isFinite(duration) ? duration : 0,
-    gravityModel
+    gravityModel,
+    couplerEnabled
   };
 }
 
@@ -413,8 +426,9 @@ function hydrateScenarioSelect(root) {
     const opt = document.createElement('option');
     const dtLabel = Number.isFinite(item.dt) && item.dt > 0 ? `${item.dt}` : '?';
     const durationLabel = Number.isFinite(item.duration) && item.duration > 0 ? `${item.duration}` : '?';
+    const couplerLabel = item.couplerEnabled ? 'coupler:on' : 'coupler:off';
     opt.value = item.name;
-    opt.textContent = `${item.name} • ${item.gravityModel} • dt=${dtLabel}s • duration=${durationLabel}s`;
+    opt.textContent = `${item.name} • ${item.gravityModel} • ${couplerLabel} • dt=${dtLabel}s • duration=${durationLabel}s`;
     select.appendChild(opt);
   }
 
@@ -473,6 +487,10 @@ function maybeInitLab() {
     status: root.querySelector('[data-game-status]'),
     scenario: root.querySelector('[data-scenario-select]'),
     speed: root.querySelector('[data-game-speed]'),
+    startGround: root.querySelector('[data-game-start-ground]'),
+    autoTrim: root.querySelector('[data-auto-trim]'),
+    autoWeight: root.querySelector('[data-auto-weight]'),
+    autoVertical: root.querySelector('[data-auto-vertical]'),
     pauseButton: root.querySelector('[data-game-pause]'),
     stats,
     canvasTop: root.querySelector('[data-game-canvas-top]'),
@@ -514,6 +532,43 @@ function formatNumber(value, digits = 3, suffix = '') {
   return `${value.toFixed(digits)}${suffix}`;
 }
 
+function clampUnit(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(-1, Math.min(1, value));
+}
+
+function readNumberInput(node, fallback) {
+  const raw = Number.parseFloat(node?.value ?? '');
+  if (!Number.isFinite(raw)) {
+    return fallback;
+  }
+  return raw;
+}
+
+function localVerticalMetrics(sample) {
+  if (!sample || !sample.position || !sample.primary_position || !sample.g_raw || !sample.effective_g) {
+    return null;
+  }
+
+  const rx = sample.position.x - sample.primary_position.x;
+  const ry = sample.position.y - sample.primary_position.y;
+  const rz = sample.position.z - sample.primary_position.z;
+  const rMag = Math.hypot(rx, ry, rz);
+  if (!Number.isFinite(rMag) || rMag <= 1e-9) {
+    return null;
+  }
+  const ux = rx / rMag;
+  const uy = ry / rMag;
+  const uz = rz / rMag;
+
+  const downRaw = -(sample.g_raw.x * ux + sample.g_raw.y * uy + sample.g_raw.z * uz);
+  const downEff = -(sample.effective_g.x * ux + sample.effective_g.y * uy + sample.effective_g.z * uz);
+  const ratio = Math.abs(downRaw) > 1e-9 ? downEff / downRaw : NaN;
+  return { downRaw, downEff, ratio };
+}
+
 function setStat(key, value) {
   const node = state.refs?.stats?.[key];
   if (!node) {
@@ -540,6 +595,20 @@ function updateHUD(sample) {
   setStat('vertical', `${formatNumber(sample.vertical_vel, 2)} m/s`);
   setStat('model', sample.gravity_model || '-');
 
+  const mass = Number.parseFloat(sample.craft_mass);
+  const vertical = localVerticalMetrics(sample);
+  const downRaw = vertical ? vertical.downRaw : NaN;
+  const downEff = vertical ? vertical.downEff : NaN;
+  const weightN = Number.isFinite(mass) && Number.isFinite(downEff) ? (mass * downEff) : NaN;
+  const weightKGF = Number.isFinite(weightN) ? (weightN / 9.80665) : NaN;
+
+  setStat('mass', `${formatNumber(mass, 1)} kg`);
+  setStat('weight_n', `${formatNumber(weightN, 1)} N`);
+  setStat('weight_kgf', `${formatNumber(weightKGF, 2)} kgf`);
+  setStat('weight_ratio', `${formatNumber(vertical ? vertical.ratio : NaN, 3)} x`);
+  setStat('down_g_raw', `${formatNumber(downRaw, 3)} m/s^2`);
+  setStat('down_g_eff', `${formatNumber(downEff, 3)} m/s^2`);
+
   setStat('c', formatNumber(sample.coupling_c, 4));
   setStat('k', formatNumber(sample.coupling_k, 4));
   setStat('phi', formatNumber(sample.coupling_phi, 4));
@@ -547,12 +616,27 @@ function updateHUD(sample) {
   setStat('lock', `${formatNumber(sample.lock_quality, 4)} (${sample.lock_flag ? 'lock' : 'open'})`);
   setStat('runaway', sample.runaway_flag ? 'flagged' : 'clear');
 
+  setStat('drive_amp', formatNumber(sample.drive_amp, 4));
+  setStat('drive_omega', `${formatNumber(sample.drive_omega, 3)} rad/s`);
+  setStat('omega_base', `${formatNumber(sample.omega_base, 3)} rad/s`);
+  setStat('drive_phase', formatNumber(sample.drive_phase, 4));
+  setStat('pll_delta', `${formatNumber(sample.pll_freq_delta, 4)} rad/s`);
+  setStat('osc_mag', formatNumber(sample.osc_mag, 4));
+
   setStat('power', `${formatNumber(sample.drive_power, 0)} W`);
   setStat('energy', `${formatNumber(sample.energy, 0)} W*s`);
   setStat('amp_target', formatNumber(sample.control_amp_target, 3));
   setStat('theta_target', formatNumber(sample.control_theta_target, 3));
   setStat('axis_yaw', formatNumber(sample.control_axis_yaw, 3));
   setStat('lock_assist', sample.control_lock_assist ? 'on' : 'off');
+  setStat('amp_axis', formatNumber(sample.control_amp_axis, 2));
+  setStat('phi_axis', formatNumber(sample.control_phi_axis, 2));
+  setStat('yaw_axis', formatNumber(sample.control_yaw_axis, 2));
+
+  const last = state.input.lastControl || {};
+  setStat('control_mode', last.mode || 'manual');
+  setStat('auto_amp', formatNumber(last.autoAmp, 2));
+  setStat('auto_phi', formatNumber(last.autoPhi, 2));
 }
 
 function pushTrail(sample) {
@@ -699,9 +783,10 @@ async function startGameSession() {
 
   const scenario = selectedScenario(root);
   setStatus(`starting ${scenario}...`);
+  const startOnGround = Boolean(state.refs?.startGround?.checked);
 
   try {
-    const payload = await apiPost('/api/game/start', { scenario });
+    const payload = await apiPost('/api/game/start', { scenario, start_on_ground: startOnGround });
     state.game.sessionId = payload.session_id || '';
     state.game.dt = Number.parseFloat(payload.dt) || Number.parseFloat(payload?.state?.dt) || (1 / 120);
     state.game.running = true;
@@ -713,6 +798,17 @@ async function startGameSession() {
     clearTrails();
     pushTrail(state.game.latest);
     state.input.lockAssist = Boolean(state.game.latest?.control_lock_assist);
+    state.input.lastControl = {
+      mode: 'manual',
+      manualAmp: 0,
+      manualPhi: 0,
+      manualYaw: 0,
+      autoAmp: 0,
+      autoPhi: 0,
+      finalAmp: 0,
+      finalPhi: 0,
+      finalYaw: 0
+    };
     if (state.refs?.pauseButton) {
       state.refs.pauseButton.textContent = 'Pause';
     }
@@ -720,7 +816,15 @@ async function startGameSession() {
     if (state.renderer) {
       state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide);
     }
-    setStatus(`running ${scenario} • dt=${state.game.dt.toFixed(4)} s`);
+    const mode = String(state.game.latest?.gravity_model || '').toLowerCase();
+    const couplerEnabled = Boolean(state.game.latest?.coupler_enabled);
+    if (!couplerEnabled) {
+      setStatus(`running ${scenario} • coupler off • A/W/Q controls are telemetry-only here`);
+    } else if (mode && mode !== 'coupling') {
+      setStatus(`running ${scenario} • ${mode} model • coupler controls are telemetry-only here`);
+    } else {
+      setStatus(`running ${scenario} • dt=${state.game.dt.toFixed(4)} s • ${startOnGround ? 'ground start' : 'scenario start'}`);
+    }
     if (!state.game.rafId) {
       state.game.rafId = window.requestAnimationFrame(gameLoop);
     }
@@ -775,11 +879,52 @@ async function resetGameSession() {
   await startGameSession();
 }
 
-function currentControlPayload() {
+function currentControlPayload(sample = state.game.latest) {
   const keys = state.input.keys;
-  const ampAxis = (keys.d ? 1 : 0) + (keys.a ? -1 : 0);
-  const phiAxis = (keys.w ? 1 : 0) + (keys.s ? -1 : 0);
-  const yawAxis = (keys.e ? 1 : 0) + (keys.q ? -1 : 0);
+  const manualAmp = (keys.d ? 1 : 0) + (keys.a ? -1 : 0);
+  const manualPhi = (keys.w ? 1 : 0) + (keys.s ? -1 : 0);
+  const manualYaw = (keys.e ? 1 : 0) + (keys.q ? -1 : 0);
+
+  let autoAmp = 0;
+  let autoPhi = 0;
+  let mode = 'manual';
+
+  const autoTrimEnabled = Boolean(state.refs?.autoTrim?.checked);
+  const couplerEnabled = Boolean(sample?.coupler_enabled);
+  const couplingModel = String(sample?.gravity_model || '').toLowerCase() === 'coupling';
+  if (autoTrimEnabled && couplerEnabled && couplingModel) {
+    const vertical = localVerticalMetrics(sample);
+    const weightRatio = vertical ? vertical.ratio : NaN;
+    const targetWeight = readNumberInput(state.refs?.autoWeight, 1.0);
+    const targetVertical = readNumberInput(state.refs?.autoVertical, 0.0);
+    const verticalVel = Number.parseFloat(sample?.vertical_vel);
+    const lockQuality = Number.parseFloat(sample?.lock_quality);
+
+    const weightErr = Number.isFinite(weightRatio) ? (targetWeight - weightRatio) : 0;
+    const verticalErr = Number.isFinite(verticalVel) ? (targetVertical - verticalVel) : 0;
+    const lockErr = Number.isFinite(lockQuality) ? (0.9 - lockQuality) : 0;
+
+    autoPhi = clampUnit((weightErr * 0.9) + (verticalErr * 0.04));
+    autoAmp = clampUnit(lockErr * 1.1);
+    mode = 'assist';
+  }
+
+  const ampAxis = clampUnit(manualAmp + autoAmp);
+  const phiAxis = clampUnit(manualPhi + autoPhi);
+  const yawAxis = clampUnit(manualYaw);
+
+  state.input.lastControl = {
+    mode,
+    manualAmp,
+    manualPhi,
+    manualYaw,
+    autoAmp,
+    autoPhi,
+    finalAmp: ampAxis,
+    finalPhi: phiAxis,
+    finalYaw: yawAxis
+  };
+
   return {
     amp_axis: ampAxis,
     phi_axis: phiAxis,
@@ -798,7 +943,7 @@ async function requestStep(steps) {
     const payload = await apiPost('/api/game/step', {
       session_id: state.game.sessionId,
       steps,
-      controls: currentControlPayload()
+      controls: currentControlPayload(state.game.latest)
     });
     const sample = payload?.state || null;
     if (!sample) {
@@ -807,7 +952,10 @@ async function requestStep(steps) {
     state.game.latest = sample;
     pushTrail(sample);
     updateHUD(sample);
-    setStatus(`running • t=${formatNumber(sample.time, 2)}s • C=${formatNumber(sample.coupling_c, 3)}`);
+    const vertical = localVerticalMetrics(sample);
+    const ratio = vertical ? formatNumber(vertical.ratio, 3) : '-';
+    const mode = state.input.lastControl?.mode || 'manual';
+    setStatus(`running • t=${formatNumber(sample.time, 2)}s • C=${formatNumber(sample.coupling_c, 3)} • W=${ratio}x • ${mode}`);
   } catch (err) {
     setStatus(`session error: ${err.message || 'step failed'}`);
     await stopGameSession(false, 'session closed');

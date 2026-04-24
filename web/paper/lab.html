@@ -3,7 +3,7 @@
   <p>Playable fixed-step simulation lab. Inputs only drive coupler targets and lock behavior; craft motion remains fully physical.</p>
 
   <div class="rounded-2xl border border-paper-edge/70 bg-white p-4">
-    <div class="grid gap-3 md:grid-cols-[1fr_120px_auto_auto_auto] md:items-end">
+    <div class="grid gap-3 md:grid-cols-[1fr_120px_auto_auto_auto_auto] md:items-end">
       <label class="block text-sm">
         <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Scenario</span>
         <select data-scenario-select class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm"></select>
@@ -12,6 +12,11 @@
       <label class="block text-sm">
         <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Sim Speed</span>
         <input data-game-speed type="number" min="0.25" max="8" step="0.25" value="1.0" class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm" />
+      </label>
+
+      <label class="inline-flex h-[42px] items-center gap-2 rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-xs text-paper-ink/80">
+        <input data-game-start-ground type="checkbox" checked class="h-4 w-4 rounded border-paper-edge/80" />
+        <span class="font-display uppercase tracking-[0.12em]">Start On Ground</span>
       </label>
 
       <button data-game-start class="rounded-lg border border-paper-cool/70 bg-paper-cool px-4 py-2 font-display text-sm text-white transition hover:-translate-y-0.5 hover:bg-[#0c5a62]">Start Session</button>
@@ -31,7 +36,25 @@
     </div>
 
     <div class="mt-3 rounded-xl border border-paper-edge/70 bg-[#f7fbfc] p-3 text-xs leading-6 text-paper-ink/80">
-      <p class="font-display tracking-wide">Controls: <span class="font-mono">A/D</span> drive amplitude, <span class="font-mono">W/S</span> phase bias, <span class="font-mono">Q/E</span> axis yaw, <span class="font-mono">Space</span> toggle lock assist, <span class="font-mono">R</span> reset.</p>
+      <p class="font-display tracking-wide">Controls: hold <span class="font-mono">A/D</span> drive amplitude, hold <span class="font-mono">W/S</span> phase bias, hold <span class="font-mono">Q/E</span> axis yaw, <span class="font-mono">Space</span> toggle lock assist, <span class="font-mono">R</span> reset.</p>
+      <p class="mt-1 text-paper-ink/70">Use coupling scenarios to test controls. Watch <span class="font-mono">Amp/Phi/Yaw Axis</span>, <span class="font-mono">Drive Omega</span>, and <span class="font-mono">Weight</span> metrics while pressing keys.</p>
+    </div>
+
+    <div class="mt-3 grid gap-3 md:grid-cols-[auto_140px_140px] md:items-end">
+      <label class="inline-flex h-[42px] items-center gap-2 rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-xs text-paper-ink/80">
+        <input data-auto-trim type="checkbox" checked class="h-4 w-4 rounded border-paper-edge/80" />
+        <span class="font-display uppercase tracking-[0.12em]">Auto Trim Assist</span>
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Target Weight (xg)</span>
+        <input data-auto-weight type="number" min="-1.5" max="1.5" step="0.05" value="1.0" class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm" />
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Target Vertical (m/s)</span>
+        <input data-auto-vertical type="number" min="-50" max="50" step="0.25" value="0.0" class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm" />
+      </label>
     </div>
   </div>
 
@@ -54,6 +77,13 @@
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Vertical V</p><p data-stat="vertical" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Model</p><p data-stat="model" class="font-mono text-sm">-</p></div>
 
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Mass</p><p data-stat="mass" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Weight</p><p data-stat="weight_n" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Weight KGF</p><p data-stat="weight_kgf" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Weight xg</p><p data-stat="weight_ratio" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Down g Raw</p><p data-stat="down_g_raw" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Down g Eff</p><p data-stat="down_g_eff" class="font-mono text-sm">-</p></div>
+
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">C</p><p data-stat="c" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">k</p><p data-stat="k" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">phi</p><p data-stat="phi" class="font-mono text-sm">-</p></div>
@@ -61,11 +91,24 @@
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Lock</p><p data-stat="lock" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Runaway</p><p data-stat="runaway" class="font-mono text-sm">-</p></div>
 
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Drive Amp</p><p data-stat="drive_amp" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Drive Omega</p><p data-stat="drive_omega" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Omega Base</p><p data-stat="omega_base" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Drive Phase</p><p data-stat="drive_phase" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">PLL dOmega</p><p data-stat="pll_delta" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Osc Mag</p><p data-stat="osc_mag" class="font-mono text-sm">-</p></div>
+
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Drive Power</p><p data-stat="power" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Energy</p><p data-stat="energy" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Amp Target</p><p data-stat="amp_target" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Theta Target</p><p data-stat="theta_target" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Axis Yaw</p><p data-stat="axis_yaw" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Lock Assist</p><p data-stat="lock_assist" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Amp Axis</p><p data-stat="amp_axis" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Phi Axis</p><p data-stat="phi_axis" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Yaw Axis</p><p data-stat="yaw_axis" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Control Mode</p><p data-stat="control_mode" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Auto Amp Axis</p><p data-stat="auto_amp" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Auto Phi Axis</p><p data-stat="auto_phi" class="font-mono text-sm">-</p></div>
   </div>
 </article>

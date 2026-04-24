@@ -52,6 +52,7 @@ type scenarioInfo struct {
 	Duration     float64 `json:"duration"`
 	LogEvery     int     `json:"log_every"`
 	GravityModel string  `json:"gravity_model"`
+	CouplerEnabled bool  `json:"coupler_enabled"`
 }
 
 type notesTreeNode struct {
@@ -470,6 +471,7 @@ func (s *paperServer) handleScenarios(w http.ResponseWriter, r *http.Request) {
 			info.Duration = cfg.Duration
 			info.LogEvery = cfg.LogEvery
 			info.GravityModel = cfg.GravityModel.Type
+			info.CouplerEnabled = cfg.Coupler.Enabled && strings.EqualFold(cfg.GravityModel.Type, "coupling")
 		}
 		infos = append(infos, info)
 	}

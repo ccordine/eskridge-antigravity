@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/cmplx"
 	"net/http"
 	"strings"
 	"sync"
@@ -26,7 +27,8 @@ const (
 )
 
 type gameStartRequest struct {
-	Scenario string `json:"scenario"`
+	Scenario      string `json:"scenario"`
+	StartOnGround bool   `json:"start_on_ground"`
 }
 
 type gameControlInput struct {
@@ -67,6 +69,8 @@ type gameStepState struct {
 	Time float64 `json:"time"`
 	Dt   float64 `json:"dt"`
 
+	CraftMass float64 `json:"craft_mass"`
+
 	Position        mathx.Vec3 `json:"position"`
 	Velocity        mathx.Vec3 `json:"velocity"`
 	Speed           float64    `json:"speed"`
@@ -81,6 +85,7 @@ type gameStepState struct {
 	EffectiveGMag float64    `json:"effective_g_mag"`
 	GravPower     float64    `json:"grav_power"`
 	GravityModel  string     `json:"gravity_model"`
+	CouplerEnabled bool      `json:"coupler_enabled"`
 
 	CouplingC   float64 `json:"coupling_c"`
 	CouplingK   float64 `json:"coupling_k"`
@@ -90,7 +95,11 @@ type gameStepState struct {
 	LockQuality float64 `json:"lock_quality"`
 	LockFlag    bool    `json:"lock_flag"`
 	DriveAmp    float64 `json:"drive_amp"`
+	OmegaBase   float64 `json:"omega_base"`
 	DriveOmega  float64 `json:"drive_omega"`
+	DrivePhase  float64 `json:"drive_phase"`
+	PLLFreqDelta float64 `json:"pll_freq_delta"`
+	OscMag      float64 `json:"osc_mag"`
 	DrivePower  float64 `json:"drive_power"`
 	Energy      float64 `json:"energy"`
 
@@ -212,7 +221,7 @@ func (s *paperServer) handleGameStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := newGameSession(sessionID, cfgPath, cfg)
+	session, err := newGameSession(sessionID, cfgPath, cfg, req.StartOnGround)
 	if err != nil {
 		http.Error(w, "failed to initialize session", http.StatusInternalServerError)
 		return
@@ -361,7 +370,7 @@ func newGameSessionID() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-func newGameSession(id, cfgPath string, cfg config.Scenario) (*gameSession, error) {
+func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool) (*gameSession, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -470,6 +479,9 @@ func newGameSession(id, cfgPath string, cfg config.Scenario) (*gameSession, erro
 
 	session.controls.AmpTarget = mathx.Clamp(session.controls.AmpTarget, couplerState.Params.MinAmplitude, couplerState.Params.MaxAmplitude)
 	session.controls.ThetaTarget = mathx.WrapAngle(session.controls.ThetaTarget)
+	if startOnGround && session.env.Ground.Enabled {
+		session.placeCraftOnGround()
+	}
 
 	return session, nil
 }
@@ -688,6 +700,7 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		Step: gs.step,
 		Time: gs.simTime,
 		Dt:   gs.dt,
+		CraftMass: gs.craft.Mass,
 
 		Position:        gs.craft.Position,
 		Velocity:        gs.craft.Velocity,
@@ -703,6 +716,7 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		EffectiveGMag: eval.effective.Norm(),
 		GravPower:     gs.craft.Mass * eval.effective.Dot(gs.craft.Velocity),
 		GravityModel:  gs.gravityModel,
+		CouplerEnabled: gs.couplerEnabled,
 
 		CouplingC:   gs.couplerState.C,
 		CouplingK:   gs.couplerState.K,
@@ -712,7 +726,11 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		LockQuality: gs.couplerState.LockQuality,
 		LockFlag:    gs.couplerState.LockQuality >= 0.5,
 		DriveAmp:    gs.couplerState.ADrive,
+		OmegaBase:   gs.couplerState.OmegaBase,
 		DriveOmega:  gs.couplerState.OmegaDrive,
+		DrivePhase:  gs.couplerState.ThetaDrive,
+		PLLFreqDelta: gs.couplerState.DeltaOmega,
+		OscMag:      cmplx.Abs(gs.couplerState.Z),
 		DrivePower:  gs.couplerState.DrivePower,
 		Energy:      gs.couplerState.Energy,
 
@@ -742,6 +760,21 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 
 func (gs *gameSession) touchLocked() {
 	gs.updatedAt = time.Now().UTC()
+}
+
+func (gs *gameSession) placeCraftOnGround() {
+	ground := gs.groundBodyLocked()
+	r := gs.craft.Position.Sub(ground.Position)
+	if r.Norm2() == 0 {
+		r = mathx.Vec3{Z: 1}
+	}
+	n := r.Normalize()
+	if n.Norm2() == 0 {
+		n = mathx.Vec3{Z: 1}
+	}
+	minD := ground.Radius + gs.env.Ground.SurfaceEps
+	gs.craft.Position = ground.Position.Add(n.Scale(minD))
+	gs.craft.Velocity = ground.Velocity
 }
 
 func findYukawaPrimary(primaryName string, diag []physics.YukawaBodyDiagnostic) (float64, float64) {
