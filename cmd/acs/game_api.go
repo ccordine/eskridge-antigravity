@@ -24,20 +24,100 @@ const (
 	gameSessionTTL         = 30 * time.Minute
 	gameSessionMaxCount    = 64
 	gameMaxStepsPerRequest = 240
+	gameCraftScaleMin      = 1.0
+	gameCraftScaleMax      = 6.0
+	gameCraftLazarSpanM    = 15.8
+	gameDirectionalPerpMix = 0.22
+	gameWarpAmpMax         = 24.0
+	gameWarpKMax           = 6.0
+	gameWarpAmpRateMin     = 9.0
+	gameWarpThetaRateMin   = 10.0
+	gameOscOmegaMin        = 40.0
+	gameOscOmegaMax        = 160.0
+	gameOscQMin            = 5.0
+	gameOscQMax            = 240.0
+	gameOscBetaMin         = 0.2
+	gameOscBetaMax         = 4.0
+	gamePlasmaMin          = 0.0
+	gamePlasmaMax          = 1.0
+	gameYawAxisRate        = 3.6
+	gamePitchAxisRate      = 3.2
+	gameInitialAxisYaw     = 0.0
+	gameInitialAxisPitch   = 0.0
+	gameAttitudeAlignRate  = 3.2
 )
 
+type gamePlanetPreset struct {
+	Name              string
+	Mass              float64
+	Radius            float64
+	AtmosphereEnabled bool
+	AtmosphereRho0    float64
+	AtmosphereScaleH  float64
+}
+
+var gamePlanetPresets = map[string]gamePlanetPreset{
+	"earth": {
+		Name:              "earth",
+		Mass:              5.972e24,
+		Radius:            6_371_000,
+		AtmosphereEnabled: true,
+		AtmosphereRho0:    1.225,
+		AtmosphereScaleH:  8_500,
+	},
+	"moon": {
+		Name:              "moon",
+		Mass:              7.34767309e22,
+		Radius:            1_737_400,
+		AtmosphereEnabled: false,
+		AtmosphereRho0:    0,
+		AtmosphereScaleH:  0,
+	},
+	"mars": {
+		Name:              "mars",
+		Mass:              6.4171e23,
+		Radius:            3_389_500,
+		AtmosphereEnabled: true,
+		AtmosphereRho0:    0.020,
+		AtmosphereScaleH:  11_100,
+	},
+	"venus": {
+		Name:              "venus",
+		Mass:              4.8675e24,
+		Radius:            6_051_800,
+		AtmosphereEnabled: true,
+		AtmosphereRho0:    65.0,
+		AtmosphereScaleH:  15_900,
+	},
+	"jupiter": {
+		Name:              "jupiter",
+		Mass:              1.8982e27,
+		Radius:            69_911_000,
+		AtmosphereEnabled: true,
+		AtmosphereRho0:    0.16,
+		AtmosphereScaleH:  27_000,
+	},
+}
+
 type gameStartRequest struct {
-	Scenario      string `json:"scenario"`
-	StartOnGround bool   `json:"start_on_ground"`
-	ShipType      string `json:"ship_type,omitempty"`
+	Scenario      string  `json:"scenario"`
+	StartOnGround bool    `json:"start_on_ground"`
+	ShipType      string  `json:"ship_type,omitempty"`
+	WarpDrive     string  `json:"warp_drive,omitempty"`
+	PlanetPreset  string  `json:"planet_preset,omitempty"`
+	CraftScale    float64 `json:"craft_scale,omitempty"`
 }
 
 type gameControlInput struct {
-	AmpAxis    float64 `json:"amp_axis"`
-	PhiAxis    float64 `json:"phi_axis"`
-	YawAxis    float64 `json:"yaw_axis"`
-	PitchAxis  float64 `json:"pitch_axis"`
-	LockAssist *bool   `json:"lock_assist,omitempty"`
+	AmpAxis      float64 `json:"amp_axis"`
+	PhiAxis      float64 `json:"phi_axis"`
+	YawAxis      float64 `json:"yaw_axis"`
+	PitchAxis    float64 `json:"pitch_axis"`
+	OmegaTarget  float64 `json:"omega_target,omitempty"`
+	QTarget      float64 `json:"q_target,omitempty"`
+	BetaTarget   float64 `json:"beta_target,omitempty"`
+	PlasmaTarget float64 `json:"plasma_target,omitempty"`
+	LockAssist   *bool   `json:"lock_assist,omitempty"`
 }
 
 type gameStepRequest struct {
@@ -55,6 +135,7 @@ type gameStartResponse struct {
 	Scenario     string        `json:"scenario"`
 	Dt           float64       `json:"dt"`
 	GravityModel string        `json:"gravity_model"`
+	WarpDrive    string        `json:"warp_drive"`
 	State        gameStepState `json:"state"`
 }
 
@@ -71,40 +152,67 @@ type gameStepState struct {
 	Time float64 `json:"time"`
 	Dt   float64 `json:"dt"`
 
-	CraftMass float64 `json:"craft_mass"`
+	CraftMass    float64 `json:"craft_mass"`
+	CraftScale   float64 `json:"craft_scale"`
+	CraftSpanM   float64 `json:"craft_span_m"`
+	OrientationW float64 `json:"orientation_w"`
+	OrientationX float64 `json:"orientation_x"`
+	OrientationY float64 `json:"orientation_y"`
+	OrientationZ float64 `json:"orientation_z"`
+	AngularVelX  float64 `json:"angular_vel_x"`
+	AngularVelY  float64 `json:"angular_vel_y"`
+	AngularVelZ  float64 `json:"angular_vel_z"`
 
 	Position        mathx.Vec3 `json:"position"`
 	Velocity        mathx.Vec3 `json:"velocity"`
 	Speed           float64    `json:"speed"`
 	Altitude        float64    `json:"altitude"`
 	VerticalVel     float64    `json:"vertical_vel"`
+	LocalUpX        float64    `json:"local_up_x"`
+	LocalUpY        float64    `json:"local_up_y"`
+	LocalUpZ        float64    `json:"local_up_z"`
+	PrimaryName     string     `json:"primary_name"`
+	PrimaryMass     float64    `json:"primary_mass"`
 	PrimaryPosition mathx.Vec3 `json:"primary_position"`
 	PrimaryRadius   float64    `json:"primary_radius"`
 
-	GRaw           mathx.Vec3 `json:"g_raw"`
-	GRawMag        float64    `json:"g_raw_mag"`
-	EffectiveG     mathx.Vec3 `json:"effective_g"`
-	EffectiveGMag  float64    `json:"effective_g_mag"`
-	GravPower      float64    `json:"grav_power"`
-	GravityModel   string     `json:"gravity_model"`
-	CouplerEnabled bool       `json:"coupler_enabled"`
-	ShipType       string     `json:"ship_type"`
+	GRaw              mathx.Vec3 `json:"g_raw"`
+	GRawMag           float64    `json:"g_raw_mag"`
+	EffectiveG        mathx.Vec3 `json:"effective_g"`
+	EffectiveGMag     float64    `json:"effective_g_mag"`
+	GravPower         float64    `json:"grav_power"`
+	GravityModel      string     `json:"gravity_model"`
+	CouplerEnabled    bool       `json:"coupler_enabled"`
+	ShipType          string     `json:"ship_type"`
+	WarpDrive         string     `json:"warp_drive"`
+	AtmosphereEnabled bool       `json:"atmosphere_enabled"`
+	AtmosphereRho0    float64    `json:"atmosphere_rho0"`
+	AtmosphereScaleH  float64    `json:"atmosphere_scale_height"`
 
-	CouplingC   float64 `json:"coupling_c"`
-	CouplingK   float64 `json:"coupling_k"`
-	CouplingPhi float64 `json:"coupling_phi"`
+	CouplingC       float64 `json:"coupling_c"`
+	CouplingK       float64 `json:"coupling_k"`
+	CouplingPhi     float64 `json:"coupling_phi"`
+	ResonatorQ      float64 `json:"resonator_q"`
+	ResonatorBeta   float64 `json:"resonator_beta"`
+	ResonatorOmega0 float64 `json:"resonator_omega0"`
 
-	PhaseError   float64 `json:"phase_error"`
-	LockQuality  float64 `json:"lock_quality"`
-	LockFlag     bool    `json:"lock_flag"`
-	DriveAmp     float64 `json:"drive_amp"`
-	OmegaBase    float64 `json:"omega_base"`
-	DriveOmega   float64 `json:"drive_omega"`
-	DrivePhase   float64 `json:"drive_phase"`
-	PLLFreqDelta float64 `json:"pll_freq_delta"`
-	OscMag       float64 `json:"osc_mag"`
-	DrivePower   float64 `json:"drive_power"`
-	Energy       float64 `json:"energy"`
+	PhaseError      float64 `json:"phase_error"`
+	LockQuality     float64 `json:"lock_quality"`
+	LockFlag        bool    `json:"lock_flag"`
+	DriveAmp        float64 `json:"drive_amp"`
+	OmegaBase       float64 `json:"omega_base"`
+	DriveOmega      float64 `json:"drive_omega"`
+	DrivePhase      float64 `json:"drive_phase"`
+	PLLFreqDelta    float64 `json:"pll_freq_delta"`
+	OscMag          float64 `json:"osc_mag"`
+	DrivePower      float64 `json:"drive_power"`
+	PlasmaPower     float64 `json:"plasma_power"`
+	Energy          float64 `json:"energy"`
+	DragForceMag    float64 `json:"drag_force_mag"`
+	DragPower       float64 `json:"drag_power"`
+	DragCdEff       float64 `json:"drag_cd_eff"`
+	DragAreaRef     float64 `json:"drag_area_ref"`
+	PlasmaReduction float64 `json:"plasma_drag_reduction"`
 
 	YukawaAlpha            float64 `json:"yukawa_alpha"`
 	YukawaLambda           float64 `json:"yukawa_lambda"`
@@ -120,39 +228,57 @@ type gameStepState struct {
 	RunawayFlag            bool    `json:"runaway_flag"`
 	RunawayExpectedUnderC2 bool    `json:"runaway_expected_c2"`
 
-	ControlAmpTarget   float64 `json:"control_amp_target"`
-	ControlThetaTarget float64 `json:"control_theta_target"`
-	ControlAxisYaw     float64 `json:"control_axis_yaw"`
-	ControlAxisPitch   float64 `json:"control_axis_pitch"`
-	ControlWarpX       float64 `json:"control_warp_x"`
-	ControlWarpY       float64 `json:"control_warp_y"`
-	ControlWarpZ       float64 `json:"control_warp_z"`
-	ControlLockAssist  bool    `json:"control_lock_assist"`
-	ControlAmpAxis     float64 `json:"control_amp_axis"`
-	ControlPhiAxis     float64 `json:"control_phi_axis"`
-	ControlYawAxis     float64 `json:"control_yaw_axis"`
-	ControlPitchAxis   float64 `json:"control_pitch_axis"`
+	ControlAmpTarget    float64 `json:"control_amp_target"`
+	ControlThetaTarget  float64 `json:"control_theta_target"`
+	ControlOmegaTarget  float64 `json:"control_omega_target"`
+	ControlQTarget      float64 `json:"control_q_target"`
+	ControlBetaTarget   float64 `json:"control_beta_target"`
+	ControlPlasmaTarget float64 `json:"control_plasma_target"`
+	ControlAxisYaw      float64 `json:"control_axis_yaw"`
+	ControlAxisPitch    float64 `json:"control_axis_pitch"`
+	ControlWarpX        float64 `json:"control_warp_x"`
+	ControlWarpY        float64 `json:"control_warp_y"`
+	ControlWarpZ        float64 `json:"control_warp_z"`
+	ControlLockAssist   bool    `json:"control_lock_assist"`
+	ControlAmpAxis      float64 `json:"control_amp_axis"`
+	ControlPhiAxis      float64 `json:"control_phi_axis"`
+	ControlYawAxis      float64 `json:"control_yaw_axis"`
+	ControlPitchAxis    float64 `json:"control_pitch_axis"`
 }
 
 type gameControlState struct {
-	AmpTarget   float64
-	ThetaTarget float64
-	AxisYaw     float64
-	AxisPitch   float64
-	LockAssist  bool
-	AmpAxis     float64
-	PhiAxis     float64
-	YawAxis     float64
-	PitchAxis   float64
+	AmpTarget    float64
+	ThetaTarget  float64
+	OmegaTarget  float64
+	QTarget      float64
+	BetaTarget   float64
+	PlasmaTarget float64
+	AxisYaw      float64
+	AxisPitch    float64
+	LockAssist   bool
+	AmpAxis      float64
+	PhiAxis      float64
+	YawAxis      float64
+	PitchAxis    float64
 }
 
 type gameControlLimits struct {
-	AmpAxisRate   float64
-	PhiAxisRate   float64
-	YawAxisRate   float64
-	PitchAxisRate float64
-	MinAxisPitch  float64
-	MaxAxisPitch  float64
+	AmpAxisRate     float64
+	PhiAxisRate     float64
+	YawAxisRate     float64
+	PitchAxisRate   float64
+	MinThetaTarget  float64
+	MaxThetaTarget  float64
+	MinOmegaTarget  float64
+	MaxOmegaTarget  float64
+	MinQTarget      float64
+	MaxQTarget      float64
+	MinBetaTarget   float64
+	MaxBetaTarget   float64
+	MinPlasmaTarget float64
+	MaxPlasmaTarget float64
+	MinAxisPitch    float64
+	MaxAxisPitch    float64
 }
 
 type gameGravityEval struct {
@@ -197,6 +323,7 @@ type gameSession struct {
 	basePllKi      float64
 
 	gravityModel string
+	warpDrive    string
 	yukawaAlpha  float64
 	yukawaLambda float64
 
@@ -205,8 +332,9 @@ type gameSession struct {
 	negMassRunawayLimit float64
 	negMassOverrides    map[string]float64
 
-	controls gameControlState
-	limits   gameControlLimits
+	controls   gameControlState
+	limits     gameControlLimits
+	craftScale float64
 }
 
 func (s *paperServer) handleGameStart(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +361,7 @@ func (s *paperServer) handleGameStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := newGameSession(sessionID, cfgPath, cfg, req.StartOnGround, req.ShipType)
+	session, err := newGameSession(sessionID, cfgPath, cfg, req.StartOnGround, req.ShipType, req.WarpDrive, req.PlanetPreset, req.CraftScale)
 	if err != nil {
 		http.Error(w, "failed to initialize session", http.StatusInternalServerError)
 		return
@@ -255,6 +383,7 @@ func (s *paperServer) handleGameStart(w http.ResponseWriter, r *http.Request) {
 		Scenario:     cfg.Name,
 		Dt:           cfg.Dt,
 		GravityModel: session.gravityModel,
+		WarpDrive:    session.warpDrive,
 		State:        state,
 	})
 }
@@ -382,7 +511,7 @@ func newGameSessionID() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool, shipTypeOverride string) (*gameSession, error) {
+func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool, shipTypeOverride, warpDriveOverride, planetPresetOverride string, craftScaleOverride float64) (*gameSession, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -391,9 +520,20 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 	if gravityModel == "" {
 		gravityModel = "coupling"
 	}
+	warpDrive := normalizedWarpDriveSelection(warpDriveOverride)
 
 	couplerState := coupler.New(cfg.CouplerRuntime())
 	couplerEnabled := cfg.Coupler.Enabled && gravityModel == "coupling"
+	switch warpDrive {
+	case "standard":
+		gravityModel = "coupling"
+		couplerEnabled = true
+	case "off":
+		gravityModel = "coupling"
+		couplerEnabled = false
+	default:
+		warpDrive = warpDriveForScenario(cfg)
+	}
 	if !couplerEnabled {
 		couplerState.C = 1.0
 		couplerState.K = 0.0
@@ -402,19 +542,33 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 		couplerState.DrivePower = 0.0
 	}
 
-	axis := couplerState.Params.FieldAxisBody
-	if axis.Norm2() == 0 {
-		axis = mathx.Vec3{X: 0.32, Y: 0, Z: 0.95}
-	}
-	axis = axis.Normalize()
-	if axis.Norm2() == 0 {
-		axis = mathx.Vec3{X: 0.32, Y: 0, Z: 0.95}
-	}
-	axisYaw, axisPitch := axisYawPitchFromVec(axis)
+	axisYaw := gameInitialAxisYaw
+	axisPitch := gameInitialAxisPitch
 
 	if couplerEnabled {
 		couplerState.Params.DirectionalEnabled = true
-		couplerState.Params.FieldAxisBody = axisFromYawPitch(axisYaw, axisPitch)
+		couplerState.Params.FieldAxisBody = mathx.Vec3{Z: 1}
+		if couplerState.Params.MaxAmplitude < gameWarpAmpMax {
+			couplerState.Params.MaxAmplitude = gameWarpAmpMax
+		}
+		if couplerState.Params.KMax < gameWarpKMax {
+			couplerState.Params.KMax = gameWarpKMax
+		}
+		if couplerState.Params.AmpRate < gameWarpAmpRateMin {
+			couplerState.Params.AmpRate = gameWarpAmpRateMin
+		}
+		if couplerState.Params.ThetaRate < gameWarpThetaRateMin {
+			couplerState.Params.ThetaRate = gameWarpThetaRateMin
+		}
+		// In game mode, if parallel/perp gains are identical then yaw/pitch steering
+		// has no directional authority (proj+perp == full gravity vector). Ensure
+		// a non-trivial anisotropy so warp orientation can induce lateral fall/drift.
+		if math.Abs(couplerState.Params.ParallelFactor-couplerState.Params.PerpFactor) <= 1e-9 {
+			if couplerState.Params.ParallelFactor == 0 {
+				couplerState.Params.ParallelFactor = 1.0
+			}
+			couplerState.Params.PerpFactor = couplerState.Params.ParallelFactor * gameDirectionalPerpMix
+		}
 	}
 
 	ampAxisRate := couplerState.Params.AmpRate
@@ -425,10 +579,18 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 	if phiAxisRate <= 0 {
 		phiAxisRate = 3.0
 	}
-	yawAxisRate := 1.5
-	pitchAxisRate := 1.2
-	minAxisPitch := -1.45
-	maxAxisPitch := 1.45
+	yawAxisRate := gameYawAxisRate
+	pitchAxisRate := gamePitchAxisRate
+	minThetaTarget := -math.Pi
+	maxThetaTarget := math.Pi
+	minOmegaTarget := gameOscOmegaMin
+	maxOmegaTarget := gameOscOmegaMax
+	minQTarget := gameOscQMin
+	maxQTarget := gameOscQMax
+	minBetaTarget := gameOscBetaMin
+	maxBetaTarget := gameOscBetaMax
+	minAxisPitch := -1.53
+	maxAxisPitch := 1.53
 
 	negMassConvention := strings.ToUpper(strings.TrimSpace(cfg.GravityModel.NegMass.Convention))
 	if negMassConvention != "C1" && negMassConvention != "C2" {
@@ -460,6 +622,7 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 		basePllKp:           couplerState.Params.PllKp,
 		basePllKi:           couplerState.Params.PllKi,
 		gravityModel:        gravityModel,
+		warpDrive:           warpDrive,
 		yukawaAlpha:         cfg.GravityModel.Yukawa.Alpha,
 		yukawaLambda:        cfg.GravityModel.Yukawa.Lambda,
 		negMassConvention:   negMassConvention,
@@ -467,33 +630,188 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 		negMassRunawayLimit: negMassRunawayLimit,
 		negMassOverrides:    copyChargeOverrides(cfg.GravityModel.NegMass.QGOverrides),
 		controls: gameControlState{
-			AmpTarget:   couplerState.Cmd.Amplitude,
-			ThetaTarget: couplerState.Cmd.ThetaTarget,
-			AxisYaw:     axisYaw,
-			AxisPitch:   axisPitch,
-			LockAssist:  true,
+			AmpTarget:    couplerState.Cmd.Amplitude,
+			ThetaTarget:  couplerState.Cmd.ThetaTarget,
+			OmegaTarget:  mathx.Clamp(couplerState.Params.Omega0, minOmegaTarget, maxOmegaTarget),
+			QTarget:      mathx.Clamp(couplerState.Params.Q, minQTarget, maxQTarget),
+			BetaTarget:   mathx.Clamp(couplerState.Params.Beta, minBetaTarget, maxBetaTarget),
+			PlasmaTarget: mathx.Clamp(cfg.Craft.Drag.Plasma.Level, gamePlasmaMin, gamePlasmaMax),
+			AxisYaw:      axisYaw,
+			AxisPitch:    axisPitch,
+			LockAssist:   true,
 		},
 		limits: gameControlLimits{
-			AmpAxisRate:   ampAxisRate,
-			PhiAxisRate:   phiAxisRate,
-			YawAxisRate:   yawAxisRate,
-			PitchAxisRate: pitchAxisRate,
-			MinAxisPitch:  minAxisPitch,
-			MaxAxisPitch:  maxAxisPitch,
+			AmpAxisRate:     ampAxisRate,
+			PhiAxisRate:     phiAxisRate,
+			YawAxisRate:     yawAxisRate,
+			PitchAxisRate:   pitchAxisRate,
+			MinThetaTarget:  minThetaTarget,
+			MaxThetaTarget:  maxThetaTarget,
+			MinOmegaTarget:  minOmegaTarget,
+			MaxOmegaTarget:  maxOmegaTarget,
+			MinQTarget:      minQTarget,
+			MaxQTarget:      maxQTarget,
+			MinBetaTarget:   minBetaTarget,
+			MaxBetaTarget:   maxBetaTarget,
+			MinPlasmaTarget: gamePlasmaMin,
+			MaxPlasmaTarget: gamePlasmaMax,
+			MinAxisPitch:    minAxisPitch,
+			MaxAxisPitch:    maxAxisPitch,
 		},
+		craftScale: gameCraftScaleMin,
 	}
+	applyPlanetPresetToSession(session, planetPresetOverride)
 	if shipType, ok := normalizeShipTypeForGame(shipTypeOverride); ok {
 		session.craft.ShipType = shipType
 	}
+	applyCraftScaleToSession(session, craftScaleOverride)
+	ensureGameAerodynamics(session)
 
 	session.controls.AmpTarget = mathx.Clamp(session.controls.AmpTarget, couplerState.Params.MinAmplitude, couplerState.Params.MaxAmplitude)
-	session.controls.ThetaTarget = mathx.WrapAngle(session.controls.ThetaTarget)
+	session.controls.ThetaTarget = mathx.Clamp(session.controls.ThetaTarget, session.limits.MinThetaTarget, session.limits.MaxThetaTarget)
+	session.controls.OmegaTarget = mathx.Clamp(session.controls.OmegaTarget, session.limits.MinOmegaTarget, session.limits.MaxOmegaTarget)
+	session.controls.QTarget = mathx.Clamp(session.controls.QTarget, session.limits.MinQTarget, session.limits.MaxQTarget)
+	session.controls.BetaTarget = mathx.Clamp(session.controls.BetaTarget, session.limits.MinBetaTarget, session.limits.MaxBetaTarget)
+	session.controls.PlasmaTarget = mathx.Clamp(session.controls.PlasmaTarget, session.limits.MinPlasmaTarget, session.limits.MaxPlasmaTarget)
 	session.controls.AxisPitch = mathx.Clamp(session.controls.AxisPitch, session.limits.MinAxisPitch, session.limits.MaxAxisPitch)
+	session.snapCraftAttitudeLocked()
 	if startOnGround && session.env.Ground.Enabled {
 		session.placeCraftOnGround()
 	}
+	session.syncWarpAxisLocked()
 
 	return session, nil
+}
+
+func normalizedWarpDriveSelection(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "scenario", "scenario_default", "default":
+		return "scenario_default"
+	case "standard", "pll", "coupling":
+		return "standard"
+	case "off", "none", "disabled", "gravity":
+		return "off"
+	default:
+		return "scenario_default"
+	}
+}
+
+func warpDriveForScenario(cfg config.Scenario) string {
+	gravityModel := strings.ToLower(strings.TrimSpace(cfg.GravityModel.Type))
+	if gravityModel == "" {
+		gravityModel = "coupling"
+	}
+	if cfg.Coupler.Enabled && gravityModel == "coupling" {
+		return "standard"
+	}
+	return "scenario_default"
+}
+
+func applyPlanetPresetToSession(session *gameSession, presetRaw string) {
+	if session == nil {
+		return
+	}
+	presetKey, ok := normalizePlanetPresetForGame(presetRaw)
+	if !ok {
+		return
+	}
+	preset, ok := gamePlanetPresets[presetKey]
+	if !ok {
+		return
+	}
+	if len(session.bodies) == 0 {
+		return
+	}
+
+	idx := session.primaryIdx
+	if idx < 0 || idx >= len(session.bodies) {
+		idx = 0
+	}
+
+	primary := session.bodies[idx]
+	rel := session.craft.Position.Sub(primary.Position)
+	dist := rel.Norm()
+	altitude := 0.0
+	if dist > 0 {
+		altitude = dist - primary.Radius
+	}
+	if math.IsNaN(altitude) || math.IsInf(altitude, 0) || altitude < 0 {
+		altitude = 0
+	}
+	dir := rel.Normalize()
+	if dir.Norm2() == 0 {
+		dir = mathx.Vec3{Z: 1}
+	}
+
+	session.bodies[idx].Name = preset.Name
+	session.bodies[idx].Mass = preset.Mass
+	session.bodies[idx].Radius = preset.Radius
+	session.env.Atmosphere.Enabled = preset.AtmosphereEnabled
+	session.env.Atmosphere.Rho0 = preset.AtmosphereRho0
+	session.env.Atmosphere.ScaleHeight = preset.AtmosphereScaleH
+	session.craft.Position = session.bodies[idx].Position.Add(dir.Scale(preset.Radius + altitude))
+}
+
+func applyCraftScaleToSession(session *gameSession, scaleRaw float64) {
+	if session == nil {
+		return
+	}
+	scale := normalizeCraftScaleForGame(scaleRaw)
+	scale2 := scale * scale
+	scale3 := scale2 * scale
+	scale5 := scale3 * scale2
+
+	if session.craft.Mass > 0 {
+		session.craft.Mass *= scale3
+	}
+	if session.craft.Drag.Area > 0 {
+		session.craft.Drag.Area *= scale2
+	}
+	session.craft.InertiaDiagonal = session.craft.InertiaDiagonal.Scale(scale5)
+	session.craftScale = scale
+}
+
+func ensureGameAerodynamics(session *gameSession) {
+	if session == nil {
+		return
+	}
+
+	session.craft.Drag.ReferenceSpan = craftSpanMetersForScale(session.craftScale)
+	if session.craft.Drag.Cd <= 0 {
+		session.craft.Drag.Cd = defaultDragCoefficientForShip(session.craft.ShipType)
+	}
+	if session.env.Atmosphere.Enabled {
+		session.craft.Drag.Enabled = true
+		session.craft.Drag.Plasma.Enabled = true
+	}
+	if session.craft.Drag.Plasma.MaxDragReduction <= 0 {
+		session.craft.Drag.Plasma.MaxDragReduction = 0.18
+	}
+	if session.craft.Drag.Plasma.AuthoritySpeed <= 0 {
+		session.craft.Drag.Plasma.AuthoritySpeed = 28.0
+	}
+	if session.craft.Drag.Plasma.VelocityFalloff <= 0 {
+		session.craft.Drag.Plasma.VelocityFalloff = 280.0
+	}
+	if session.craft.Drag.Plasma.PowerPerArea <= 0 {
+		session.craft.Drag.Plasma.PowerPerArea = 320.0
+	}
+	session.craft.Drag.Plasma.Level = mathx.Clamp(session.craft.Drag.Plasma.Level, gamePlasmaMin, gamePlasmaMax)
+}
+
+func defaultDragCoefficientForShip(shipType string) float64 {
+	switch strings.ToLower(strings.TrimSpace(shipType)) {
+	case "sphere":
+		return 0.47
+	case "egg":
+		return 0.19
+	case "pyramid":
+		return 0.32
+	case "flat_triangle":
+		return 0.14
+	default:
+		return 0.18
+	}
 }
 
 func copyChargeOverrides(in map[string]float64) map[string]float64 {
@@ -511,6 +829,35 @@ func copyChargeOverrides(in map[string]float64) map[string]float64 {
 		out[strings.ToLower(trimmed)] = value
 	}
 	return out
+}
+
+func normalizePlanetPresetForGame(raw string) (string, bool) {
+	preset := strings.ToLower(strings.TrimSpace(raw))
+	switch preset {
+	case "", "earth", "terra":
+		return "earth", true
+	case "moon", "luna":
+		return "moon", true
+	case "mars":
+		return "mars", true
+	case "venus":
+		return "venus", true
+	case "jupiter":
+		return "jupiter", true
+	default:
+		return "", false
+	}
+}
+
+func normalizeCraftScaleForGame(raw float64) float64 {
+	if math.IsNaN(raw) || math.IsInf(raw, 0) || raw <= 0 {
+		return gameCraftScaleMin
+	}
+	return mathx.Clamp(raw, gameCraftScaleMin, gameCraftScaleMax)
+}
+
+func craftSpanMetersForScale(scale float64) float64 {
+	return gameCraftLazarSpanM * normalizeCraftScaleForGame(scale)
 }
 
 func normalizeShipTypeForGame(raw string) (string, bool) {
@@ -559,8 +906,8 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 		lastEval = gs.evaluateGravityLocked()
 
 		primary := gs.primaryBodyLocked()
-		fDrag := physics.DragForce(gs.craft, gs.env, primary)
-		fNet := lastEval.effective.Scale(gs.craft.Mass).Add(fDrag)
+		dragEval := physics.DragEvaluation(gs.craft, gs.env, primary)
+		fNet := lastEval.effective.Scale(gs.craft.Mass).Add(dragEval.Force)
 		gs.craft.IntegrateSemiImplicit(gs.dt, fNet, mathx.Vec3{})
 
 		if gs.env.Ground.Enabled {
@@ -572,6 +919,8 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 		if !gs.craft.Position.IsFinite() || !gs.craft.Velocity.IsFinite() {
 			return gameStepState{}, fmt.Errorf("state diverged at step %d", gs.step)
 		}
+		gs.updateCraftAttitudeLocked(gs.dt)
+		gs.syncWarpAxisLocked()
 
 		gs.step++
 		gs.simTime += gs.dt
@@ -591,6 +940,18 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	gs.controls.PhiAxis = phiAxis
 	gs.controls.YawAxis = yawAxis
 	gs.controls.PitchAxis = pitchAxis
+	if input.OmegaTarget > 0 {
+		gs.controls.OmegaTarget = mathx.Clamp(input.OmegaTarget, gs.limits.MinOmegaTarget, gs.limits.MaxOmegaTarget)
+	}
+	if input.QTarget > 0 {
+		gs.controls.QTarget = mathx.Clamp(input.QTarget, gs.limits.MinQTarget, gs.limits.MaxQTarget)
+	}
+	if input.BetaTarget > 0 {
+		gs.controls.BetaTarget = mathx.Clamp(input.BetaTarget, gs.limits.MinBetaTarget, gs.limits.MaxBetaTarget)
+	}
+	if !math.IsNaN(input.PlasmaTarget) {
+		gs.controls.PlasmaTarget = mathx.Clamp(input.PlasmaTarget, gs.limits.MinPlasmaTarget, gs.limits.MaxPlasmaTarget)
+	}
 	if input.LockAssist != nil {
 		gs.controls.LockAssist = *input.LockAssist
 	}
@@ -600,13 +961,18 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 		gs.couplerState.Params.MinAmplitude,
 		gs.couplerState.Params.MaxAmplitude,
 	)
-	gs.controls.ThetaTarget = mathx.WrapAngle(gs.controls.ThetaTarget + phiAxis*gs.limits.PhiAxisRate*dt)
+	gs.controls.ThetaTarget = mathx.Clamp(gs.controls.ThetaTarget+phiAxis*gs.limits.PhiAxisRate*dt, gs.limits.MinThetaTarget, gs.limits.MaxThetaTarget)
 	gs.controls.AxisYaw = mathx.WrapAngle(gs.controls.AxisYaw + yawAxis*gs.limits.YawAxisRate*dt)
 	gs.controls.AxisPitch = mathx.Clamp(gs.controls.AxisPitch+pitchAxis*gs.limits.PitchAxisRate*dt, gs.limits.MinAxisPitch, gs.limits.MaxAxisPitch)
 
 	if !gs.couplerEnabled {
 		return
 	}
+
+	gs.couplerState.Params.Omega0 = gs.controls.OmegaTarget
+	gs.couplerState.Params.Q = gs.controls.QTarget
+	gs.couplerState.Params.Beta = gs.controls.BetaTarget
+	gs.craft.Drag.Plasma.Level = gs.controls.PlasmaTarget
 
 	if gs.controls.LockAssist {
 		gs.couplerState.Params.PllKp = gs.basePllKp
@@ -617,12 +983,9 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	}
 
 	gs.couplerState.Params.DirectionalEnabled = true
-	gs.couplerState.Params.FieldAxisBody = axisFromYawPitch(gs.controls.AxisYaw, gs.controls.AxisPitch)
+	gs.syncWarpAxisLocked()
 
-	omegaBase := gs.couplerState.OmegaBase
-	if gs.controls.LockAssist {
-		omegaBase = gs.couplerState.Params.Omega0
-	}
+	omegaBase := gs.controls.OmegaTarget
 	gs.couplerState.SetCommand(coupler.Command{
 		Amplitude:   gs.controls.AmpTarget,
 		ThetaTarget: gs.controls.ThetaTarget,
@@ -631,32 +994,220 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	gs.couplerState.Update(dt)
 }
 
-func axisFromYawPitch(yaw, pitch float64) mathx.Vec3 {
-	p := mathx.Clamp(pitch, -1.55, 1.55)
-	cp := math.Cos(p)
-	v := mathx.Vec3{
-		X: math.Cos(yaw) * cp,
-		Y: math.Sin(yaw) * cp,
-		Z: math.Sin(p),
+func (gs *gameSession) syncWarpAxisLocked() {
+	if gs == nil || gs.couplerState == nil {
+		return
 	}
-	if v.Norm2() == 0 {
-		return mathx.Vec3{Z: 1}
+	axisWorld := gs.warpAxisWorldLocked()
+	axisBody := gs.craft.Orientation.Conj().Rotate(axisWorld)
+	if axisBody.Norm2() == 0 {
+		axisBody = mathx.Vec3{Z: 1}
 	}
-	return v.Normalize()
+	gs.couplerState.Params.FieldAxisBody = axisBody.Normalize()
 }
 
-func axisYawPitchFromVec(v mathx.Vec3) (float64, float64) {
-	if v.Norm2() == 0 {
-		return 0, math.Pi / 2
+func (gs *gameSession) warpAxisWorldLocked() mathx.Vec3 {
+	primary := gs.primaryBodyLocked()
+	return warpAxisWorldFromYawPitch(gs.craft.Position, primary.Position, gs.controls.AxisYaw, gs.controls.AxisPitch)
+}
+
+func warpAxisWorldFromYawPitch(position, primaryPosition mathx.Vec3, yaw, pitch float64) mathx.Vec3 {
+	up := position.Sub(primaryPosition).Normalize()
+	if up.Norm2() == 0 {
+		up = mathx.Vec3{Z: 1}
 	}
-	n := v.Normalize()
-	h := math.Hypot(n.X, n.Y)
-	yaw := 0.0
-	if h > 1e-9 {
-		yaw = math.Atan2(n.Y, n.X)
+
+	forward, _ := tangentBasisFromUp(up)
+	heading := headingFromUpYaw(up, yaw)
+	if heading.Norm2() == 0 {
+		heading = forward
 	}
-	pitch := math.Atan2(n.Z, h)
-	return yaw, pitch
+
+	tilt := mathx.Clamp(pitch, -1.55, 1.55)
+	axis := up.Scale(math.Cos(tilt)).Add(heading.Scale(math.Sin(tilt)))
+	if axis.Norm2() == 0 {
+		return up
+	}
+	return axis.Normalize()
+}
+
+func tangentBasisFromUp(up mathx.Vec3) (mathx.Vec3, mathx.Vec3) {
+	forwardRef := mathx.Vec3{X: 1}
+	forward := forwardRef.Sub(up.Scale(forwardRef.Dot(up)))
+	if forward.Norm2() <= 1e-9 {
+		forwardRef = mathx.Vec3{Y: 1}
+		forward = forwardRef.Sub(up.Scale(forwardRef.Dot(up)))
+	}
+	if forward.Norm2() <= 1e-9 {
+		forward = mathx.Vec3{Y: 1}
+	}
+	forward = forward.Normalize()
+	right := up.Cross(forward).Normalize()
+	if right.Norm2() <= 1e-9 {
+		right = mathx.Vec3{Y: 1}
+	}
+	return forward, right
+}
+
+func headingFromUpYaw(up mathx.Vec3, yaw float64) mathx.Vec3 {
+	forward, right := tangentBasisFromUp(up)
+	heading := forward.Scale(math.Cos(yaw)).Add(right.Scale(math.Sin(yaw)))
+	if heading.Norm2() == 0 {
+		return forward
+	}
+	return heading.Normalize()
+}
+
+func (gs *gameSession) desiredCraftForwardLocked(desiredUp mathx.Vec3) mathx.Vec3 {
+	primary := gs.primaryBodyLocked()
+	velRel := gs.craft.Velocity.Sub(primary.Velocity)
+	forward := velRel.Sub(desiredUp.Scale(velRel.Dot(desiredUp)))
+	if forward.Norm2() <= 1e-9 {
+		forward = headingFromUpYaw(desiredUp, gs.controls.AxisYaw)
+	}
+	forward = forward.Sub(desiredUp.Scale(forward.Dot(desiredUp)))
+	if forward.Norm2() <= 1e-9 {
+		forward, _ = tangentBasisFromUp(desiredUp)
+	}
+	if forward.Norm2() == 0 {
+		return mathx.Vec3{X: 1}
+	}
+	return forward.Normalize()
+}
+
+func (gs *gameSession) desiredCraftOrientationLocked() mathx.Quat {
+	desiredUp := gs.warpAxisWorldLocked()
+	if desiredUp.Norm2() == 0 {
+		desiredUp = mathx.Vec3{Z: 1}
+	}
+	desiredUp = desiredUp.Normalize()
+	desiredForward := gs.desiredCraftForwardLocked(desiredUp)
+	return quatFromForwardUp(desiredForward, desiredUp)
+}
+
+func (gs *gameSession) snapCraftAttitudeLocked() {
+	gs.craft.Orientation = gs.desiredCraftOrientationLocked()
+	gs.craft.AngularVelocity = mathx.Vec3{}
+}
+
+func (gs *gameSession) updateCraftAttitudeLocked(dt float64) {
+	if gs == nil || dt <= 0 {
+		return
+	}
+	target := gs.desiredCraftOrientationLocked()
+	current := gs.craft.Orientation.Normalize()
+	next, omega := quatRotateToward(current, target, gameAttitudeAlignRate*dt, dt)
+	gs.craft.Orientation = next
+	gs.craft.AngularVelocity = omega
+}
+
+func quatFromForwardUp(forward, up mathx.Vec3) mathx.Quat {
+	f := forward.Normalize()
+	u := up.Normalize()
+	if f.Norm2() == 0 {
+		f = mathx.Vec3{X: 1}
+	}
+	if u.Norm2() == 0 {
+		u = mathx.Vec3{Z: 1}
+	}
+	r := u.Cross(f).Normalize()
+	if r.Norm2() == 0 {
+		r = mathx.Vec3{Y: 1}
+	}
+	f = r.Cross(u).Normalize()
+	return quatFromRotationMatrix(
+		f.X, r.X, u.X,
+		f.Y, r.Y, u.Y,
+		f.Z, r.Z, u.Z,
+	)
+}
+
+func quatFromRotationMatrix(m00, m01, m02, m10, m11, m12, m20, m21, m22 float64) mathx.Quat {
+	trace := m00 + m11 + m22
+	if trace > 0 {
+		s := math.Sqrt(trace+1.0) * 2
+		return mathx.Quat{
+			W: 0.25 * s,
+			X: (m21 - m12) / s,
+			Y: (m02 - m20) / s,
+			Z: (m10 - m01) / s,
+		}.Normalize()
+	}
+	if m00 > m11 && m00 > m22 {
+		s := math.Sqrt(1.0+m00-m11-m22) * 2
+		return mathx.Quat{
+			W: (m21 - m12) / s,
+			X: 0.25 * s,
+			Y: (m01 + m10) / s,
+			Z: (m02 + m20) / s,
+		}.Normalize()
+	}
+	if m11 > m22 {
+		s := math.Sqrt(1.0+m11-m00-m22) * 2
+		return mathx.Quat{
+			W: (m02 - m20) / s,
+			X: (m01 + m10) / s,
+			Y: 0.25 * s,
+			Z: (m12 + m21) / s,
+		}.Normalize()
+	}
+	s := math.Sqrt(1.0+m22-m00-m11) * 2
+	return mathx.Quat{
+		W: (m10 - m01) / s,
+		X: (m02 + m20) / s,
+		Y: (m12 + m21) / s,
+		Z: 0.25 * s,
+	}.Normalize()
+}
+
+func quatFromAxisAngle(axis mathx.Vec3, angle float64) mathx.Quat {
+	n := axis.Normalize()
+	if n.Norm2() == 0 || math.Abs(angle) <= 1e-9 {
+		return mathx.IdentityQuat()
+	}
+	half := angle * 0.5
+	s := math.Sin(half)
+	return mathx.Quat{
+		W: math.Cos(half),
+		X: n.X * s,
+		Y: n.Y * s,
+		Z: n.Z * s,
+	}.Normalize()
+}
+
+func quatRotateToward(current, target mathx.Quat, maxAngle, dt float64) (mathx.Quat, mathx.Vec3) {
+	curr := current.Normalize()
+	want := target.Normalize()
+	dot := curr.W*want.W + curr.X*want.X + curr.Y*want.Y + curr.Z*want.Z
+	if dot < 0 {
+		want.W = -want.W
+		want.X = -want.X
+		want.Y = -want.Y
+		want.Z = -want.Z
+	}
+	delta := want.Mul(curr.Conj()).Normalize()
+	w := mathx.Clamp(delta.W, -1, 1)
+	angle := 2 * math.Acos(w)
+	if angle > math.Pi {
+		angle -= 2 * math.Pi
+	}
+	angle = math.Abs(angle)
+	if angle <= 1e-6 {
+		return want, mathx.Vec3{}
+	}
+	sinHalf := math.Sqrt(math.Max(1-(w*w), 0))
+	axis := mathx.Vec3{X: delta.X, Y: delta.Y, Z: delta.Z}
+	if sinHalf > 1e-6 {
+		axis = axis.Scale(1.0 / sinHalf)
+	}
+	axis = axis.Normalize()
+	step := math.Min(angle, math.Max(maxAngle, 0))
+	next := quatFromAxisAngle(axis, step).Mul(curr).Normalize()
+	omega := mathx.Vec3{}
+	if dt > 0 && axis.Norm2() > 0 {
+		omega = axis.Scale(step / dt)
+	}
+	return next, omega
 }
 
 func (gs *gameSession) evaluateGravityLocked() gameGravityEval {
@@ -741,44 +1292,75 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 	altitude := d - primary.Radius
 	vertVel := gs.craft.Velocity.Sub(primary.Velocity).Dot(up)
 
+	warpAxis := gs.warpAxisWorldLocked()
+	dragEval := physics.DragEvaluation(gs.craft, gs.env, primary)
+	dragPower := dragEval.Force.Norm() * dragEval.Speed
+
 	return gameStepState{
-		Step:      gs.step,
-		Time:      gs.simTime,
-		Dt:        gs.dt,
-		CraftMass: gs.craft.Mass,
-		ShipType:  gs.craft.ShipType,
+		Step:         gs.step,
+		Time:         gs.simTime,
+		Dt:           gs.dt,
+		CraftMass:    gs.craft.Mass,
+		CraftScale:   gs.craftScale,
+		CraftSpanM:   craftSpanMetersForScale(gs.craftScale),
+		OrientationW: gs.craft.Orientation.W,
+		OrientationX: gs.craft.Orientation.X,
+		OrientationY: gs.craft.Orientation.Y,
+		OrientationZ: gs.craft.Orientation.Z,
+		AngularVelX:  gs.craft.AngularVelocity.X,
+		AngularVelY:  gs.craft.AngularVelocity.Y,
+		AngularVelZ:  gs.craft.AngularVelocity.Z,
+		ShipType:     gs.craft.ShipType,
 
 		Position:        gs.craft.Position,
 		Velocity:        gs.craft.Velocity,
 		Speed:           gs.craft.Velocity.Sub(primary.Velocity).Norm(),
 		Altitude:        altitude,
 		VerticalVel:     vertVel,
+		LocalUpX:        up.X,
+		LocalUpY:        up.Y,
+		LocalUpZ:        up.Z,
+		PrimaryName:     primary.Name,
+		PrimaryMass:     primary.Mass,
 		PrimaryPosition: primary.Position,
 		PrimaryRadius:   primary.Radius,
 
-		GRaw:           eval.raw,
-		GRawMag:        eval.raw.Norm(),
-		EffectiveG:     eval.effective,
-		EffectiveGMag:  eval.effective.Norm(),
-		GravPower:      gs.craft.Mass * eval.effective.Dot(gs.craft.Velocity),
-		GravityModel:   gs.gravityModel,
-		CouplerEnabled: gs.couplerEnabled,
+		GRaw:              eval.raw,
+		GRawMag:           eval.raw.Norm(),
+		EffectiveG:        eval.effective,
+		EffectiveGMag:     eval.effective.Norm(),
+		GravPower:         gs.craft.Mass * eval.effective.Dot(gs.craft.Velocity),
+		GravityModel:      gs.gravityModel,
+		CouplerEnabled:    gs.couplerEnabled,
+		WarpDrive:         gs.warpDrive,
+		AtmosphereEnabled: gs.env.Atmosphere.Enabled,
+		AtmosphereRho0:    gs.env.Atmosphere.Rho0,
+		AtmosphereScaleH:  gs.env.Atmosphere.ScaleHeight,
 
-		CouplingC:   gs.couplerState.C,
-		CouplingK:   gs.couplerState.K,
-		CouplingPhi: gs.couplerState.Phi,
+		CouplingC:       gs.couplerState.C,
+		CouplingK:       gs.couplerState.K,
+		CouplingPhi:     gs.couplerState.Phi,
+		ResonatorQ:      gs.couplerState.Params.Q,
+		ResonatorBeta:   gs.couplerState.Params.Beta,
+		ResonatorOmega0: gs.couplerState.Params.Omega0,
 
-		PhaseError:   gs.couplerState.PhaseError,
-		LockQuality:  gs.couplerState.LockQuality,
-		LockFlag:     gs.couplerState.LockQuality >= 0.5,
-		DriveAmp:     gs.couplerState.ADrive,
-		OmegaBase:    gs.couplerState.OmegaBase,
-		DriveOmega:   gs.couplerState.OmegaDrive,
-		DrivePhase:   gs.couplerState.ThetaDrive,
-		PLLFreqDelta: gs.couplerState.DeltaOmega,
-		OscMag:       cmplx.Abs(gs.couplerState.Z),
-		DrivePower:   gs.couplerState.DrivePower,
-		Energy:       gs.couplerState.Energy,
+		PhaseError:      gs.couplerState.PhaseError,
+		LockQuality:     gs.couplerState.LockQuality,
+		LockFlag:        gs.couplerState.LockQuality >= 0.5,
+		DriveAmp:        gs.couplerState.ADrive,
+		OmegaBase:       gs.couplerState.OmegaBase,
+		DriveOmega:      gs.couplerState.OmegaDrive,
+		DrivePhase:      gs.couplerState.ThetaDrive,
+		PLLFreqDelta:    gs.couplerState.DeltaOmega,
+		OscMag:          cmplx.Abs(gs.couplerState.Z),
+		DrivePower:      gs.couplerState.DrivePower,
+		PlasmaPower:     dragEval.PlasmaPower,
+		Energy:          gs.couplerState.Energy,
+		DragForceMag:    dragEval.Force.Norm(),
+		DragPower:       dragPower,
+		DragCdEff:       dragEval.EffectiveCd,
+		DragAreaRef:     dragEval.ReferenceArea,
+		PlasmaReduction: dragEval.PlasmaReduction,
 
 		YukawaAlpha:            gs.yukawaAlpha,
 		YukawaLambda:           gs.yukawaLambda,
@@ -794,18 +1376,22 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		RunawayFlag:            eval.runawayFlag,
 		RunawayExpectedUnderC2: eval.runawayExpectedUnderC2,
 
-		ControlAmpTarget:   gs.controls.AmpTarget,
-		ControlThetaTarget: gs.controls.ThetaTarget,
-		ControlAxisYaw:     gs.controls.AxisYaw,
-		ControlAxisPitch:   gs.controls.AxisPitch,
-		ControlWarpX:       gs.couplerState.Params.FieldAxisBody.X,
-		ControlWarpY:       gs.couplerState.Params.FieldAxisBody.Y,
-		ControlWarpZ:       gs.couplerState.Params.FieldAxisBody.Z,
-		ControlLockAssist:  gs.controls.LockAssist,
-		ControlAmpAxis:     gs.controls.AmpAxis,
-		ControlPhiAxis:     gs.controls.PhiAxis,
-		ControlYawAxis:     gs.controls.YawAxis,
-		ControlPitchAxis:   gs.controls.PitchAxis,
+		ControlAmpTarget:    gs.controls.AmpTarget,
+		ControlThetaTarget:  gs.controls.ThetaTarget,
+		ControlOmegaTarget:  gs.controls.OmegaTarget,
+		ControlQTarget:      gs.controls.QTarget,
+		ControlBetaTarget:   gs.controls.BetaTarget,
+		ControlPlasmaTarget: gs.controls.PlasmaTarget,
+		ControlAxisYaw:      gs.controls.AxisYaw,
+		ControlAxisPitch:    gs.controls.AxisPitch,
+		ControlWarpX:        warpAxis.X,
+		ControlWarpY:        warpAxis.Y,
+		ControlWarpZ:        warpAxis.Z,
+		ControlLockAssist:   gs.controls.LockAssist,
+		ControlAmpAxis:      gs.controls.AmpAxis,
+		ControlPhiAxis:      gs.controls.PhiAxis,
+		ControlYawAxis:      gs.controls.YawAxis,
+		ControlPitchAxis:    gs.controls.PitchAxis,
 	}
 }
 

@@ -143,8 +143,13 @@ Example:
 
 In `/paper/lab`:
 
+- `Flight Guide` button opens an in-app step-by-step modal walkthrough
+- Direct slider bars for amp/phase/yaw/pitch setpoints with per-channel lock toggles (`Lock` checkboxes)
+- Expanded live ranges for high-speed play (`amp 0..24`, `phase ±pi`, `pitch ±1.53`) with faster keyboard nudges
+- Keyboard input nudges setpoint bars (`A/D`, `W/S`, `Q/E`, `I/K`); hold `Shift` for coarse steps
+- `Space`: toggles lock assist; keep it `on` for stable hover/assist behavior
 - `A / D`: decrease/increase drive amplitude target
-- `W / S`: increase/decrease phase target
+- `W / S`: increase/decrease phase bias target (radians)
 - `Q / E`: rotate directional coupling axis yaw
 - `I / K`: increase/decrease directional coupling axis pitch
 - `Space`: toggle lock assist (PLL gains on/off)
@@ -153,7 +158,13 @@ In `/paper/lab`:
 The lab also exposes:
 
 - Ship type selector (`saucer`, `sphere`, `egg`, `pyramid`, `flat_triangle`) used at session start
+- Craft scale selector (`1.00x` to `6.00x`) with `1.00x` anchored to Lazar-style saucer span (~15.8 m / 52 ft); mass scales with `scale^3` and drag area with `scale^2`
+- Planet preset selector (`earth`, `moon`, `mars`, `venus`, `jupiter`) that changes primary body mass/radius for game sessions
 - Map mode selector (`planetary`, `local`) for Earth-centered vs local-follow camera behavior
+- Planetary camera mode (`follow` or `global`) plus zoom control for non-exaggerated climb/descend visibility
 - A live HTML5 canvas 3D flight panel that renders either a flat-map scene (`local`) or globe scene (`planetary`)
+- A live speedometer dial (m/s + km/h) with needle and fading autoscale for quick motion awareness
+- A compact Flight Ops panel with tabbed `Assist` / `State` views plus collapsible advanced telemetry to keep core controls and views on one screen
+- An Energy Budget panel with mission-duration estimates (`kWh`, `MJ`, battery packs, gasoline-equivalent burn rate, and climb-power floor)
 
 The lab uses fixed dt stepping server-side and applies player input only through coupler/control targets.

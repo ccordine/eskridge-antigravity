@@ -11,9 +11,20 @@ type CelestialBody struct {
 }
 
 type DragModel struct {
-	Enabled bool
-	Cd      float64
-	Area    float64
+	Enabled       bool
+	Cd            float64
+	Area          float64
+	ReferenceSpan float64
+	Plasma        PlasmaSheath
+}
+
+type PlasmaSheath struct {
+	Enabled          bool
+	Level            float64
+	MaxDragReduction float64
+	AuthoritySpeed   float64
+	VelocityFalloff  float64
+	PowerPerArea     float64
 }
 
 type Craft struct {

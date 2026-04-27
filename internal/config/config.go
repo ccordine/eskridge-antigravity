@@ -46,9 +46,19 @@ type CraftConfig struct {
 }
 
 type DragConfig struct {
-	Enabled bool    `json:"enabled"`
-	Cd      float64 `json:"cd"`
-	Area    float64 `json:"area"`
+	Enabled bool               `json:"enabled"`
+	Cd      float64            `json:"cd"`
+	Area    float64            `json:"area"`
+	Plasma  PlasmaSheathConfig `json:"plasma"`
+}
+
+type PlasmaSheathConfig struct {
+	Enabled          bool    `json:"enabled"`
+	Level            float64 `json:"level"`
+	MaxDragReduction float64 `json:"max_drag_reduction"`
+	AuthoritySpeed   float64 `json:"authority_speed"`
+	VelocityFalloff  float64 `json:"velocity_falloff"`
+	PowerPerArea     float64 `json:"power_per_area"`
 }
 
 type EnvironmentConfig struct {
@@ -281,6 +291,14 @@ func (s Scenario) CraftRuntime() physics.Craft {
 			Enabled: s.Craft.Drag.Enabled,
 			Cd:      s.Craft.Drag.Cd,
 			Area:    s.Craft.Drag.Area,
+			Plasma: physics.PlasmaSheath{
+				Enabled:          s.Craft.Drag.Plasma.Enabled,
+				Level:            s.Craft.Drag.Plasma.Level,
+				MaxDragReduction: s.Craft.Drag.Plasma.MaxDragReduction,
+				AuthoritySpeed:   s.Craft.Drag.Plasma.AuthoritySpeed,
+				VelocityFalloff:  s.Craft.Drag.Plasma.VelocityFalloff,
+				PowerPerArea:     s.Craft.Drag.Plasma.PowerPerArea,
+			},
 		},
 	}
 }
