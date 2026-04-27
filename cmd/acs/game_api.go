@@ -29,12 +29,14 @@ const (
 type gameStartRequest struct {
 	Scenario      string `json:"scenario"`
 	StartOnGround bool   `json:"start_on_ground"`
+	ShipType      string `json:"ship_type,omitempty"`
 }
 
 type gameControlInput struct {
 	AmpAxis    float64 `json:"amp_axis"`
 	PhiAxis    float64 `json:"phi_axis"`
 	YawAxis    float64 `json:"yaw_axis"`
+	PitchAxis  float64 `json:"pitch_axis"`
 	LockAssist *bool   `json:"lock_assist,omitempty"`
 }
 
@@ -79,29 +81,30 @@ type gameStepState struct {
 	PrimaryPosition mathx.Vec3 `json:"primary_position"`
 	PrimaryRadius   float64    `json:"primary_radius"`
 
-	GRaw          mathx.Vec3 `json:"g_raw"`
-	GRawMag       float64    `json:"g_raw_mag"`
-	EffectiveG    mathx.Vec3 `json:"effective_g"`
-	EffectiveGMag float64    `json:"effective_g_mag"`
-	GravPower     float64    `json:"grav_power"`
-	GravityModel  string     `json:"gravity_model"`
-	CouplerEnabled bool      `json:"coupler_enabled"`
+	GRaw           mathx.Vec3 `json:"g_raw"`
+	GRawMag        float64    `json:"g_raw_mag"`
+	EffectiveG     mathx.Vec3 `json:"effective_g"`
+	EffectiveGMag  float64    `json:"effective_g_mag"`
+	GravPower      float64    `json:"grav_power"`
+	GravityModel   string     `json:"gravity_model"`
+	CouplerEnabled bool       `json:"coupler_enabled"`
+	ShipType       string     `json:"ship_type"`
 
 	CouplingC   float64 `json:"coupling_c"`
 	CouplingK   float64 `json:"coupling_k"`
 	CouplingPhi float64 `json:"coupling_phi"`
 
-	PhaseError  float64 `json:"phase_error"`
-	LockQuality float64 `json:"lock_quality"`
-	LockFlag    bool    `json:"lock_flag"`
-	DriveAmp    float64 `json:"drive_amp"`
-	OmegaBase   float64 `json:"omega_base"`
-	DriveOmega  float64 `json:"drive_omega"`
-	DrivePhase  float64 `json:"drive_phase"`
+	PhaseError   float64 `json:"phase_error"`
+	LockQuality  float64 `json:"lock_quality"`
+	LockFlag     bool    `json:"lock_flag"`
+	DriveAmp     float64 `json:"drive_amp"`
+	OmegaBase    float64 `json:"omega_base"`
+	DriveOmega   float64 `json:"drive_omega"`
+	DrivePhase   float64 `json:"drive_phase"`
 	PLLFreqDelta float64 `json:"pll_freq_delta"`
-	OscMag      float64 `json:"osc_mag"`
-	DrivePower  float64 `json:"drive_power"`
-	Energy      float64 `json:"energy"`
+	OscMag       float64 `json:"osc_mag"`
+	DrivePower   float64 `json:"drive_power"`
+	Energy       float64 `json:"energy"`
 
 	YukawaAlpha            float64 `json:"yukawa_alpha"`
 	YukawaLambda           float64 `json:"yukawa_lambda"`
@@ -120,27 +123,36 @@ type gameStepState struct {
 	ControlAmpTarget   float64 `json:"control_amp_target"`
 	ControlThetaTarget float64 `json:"control_theta_target"`
 	ControlAxisYaw     float64 `json:"control_axis_yaw"`
+	ControlAxisPitch   float64 `json:"control_axis_pitch"`
+	ControlWarpX       float64 `json:"control_warp_x"`
+	ControlWarpY       float64 `json:"control_warp_y"`
+	ControlWarpZ       float64 `json:"control_warp_z"`
 	ControlLockAssist  bool    `json:"control_lock_assist"`
 	ControlAmpAxis     float64 `json:"control_amp_axis"`
 	ControlPhiAxis     float64 `json:"control_phi_axis"`
 	ControlYawAxis     float64 `json:"control_yaw_axis"`
+	ControlPitchAxis   float64 `json:"control_pitch_axis"`
 }
 
 type gameControlState struct {
-	AmpTarget  float64
+	AmpTarget   float64
 	ThetaTarget float64
-	AxisYaw    float64
-	LockAssist bool
-	AmpAxis    float64
-	PhiAxis    float64
-	YawAxis    float64
+	AxisYaw     float64
+	AxisPitch   float64
+	LockAssist  bool
+	AmpAxis     float64
+	PhiAxis     float64
+	YawAxis     float64
+	PitchAxis   float64
 }
 
 type gameControlLimits struct {
-	AmpAxisRate float64
-	PhiAxisRate float64
-	YawAxisRate float64
-	AxisTilt    float64
+	AmpAxisRate   float64
+	PhiAxisRate   float64
+	YawAxisRate   float64
+	PitchAxisRate float64
+	MinAxisPitch  float64
+	MaxAxisPitch  float64
 }
 
 type gameGravityEval struct {
@@ -221,7 +233,7 @@ func (s *paperServer) handleGameStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := newGameSession(sessionID, cfgPath, cfg, req.StartOnGround)
+	session, err := newGameSession(sessionID, cfgPath, cfg, req.StartOnGround, req.ShipType)
 	if err != nil {
 		http.Error(w, "failed to initialize session", http.StatusInternalServerError)
 		return
@@ -370,7 +382,7 @@ func newGameSessionID() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool) (*gameSession, error) {
+func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool, shipTypeOverride string) (*gameSession, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -398,23 +410,11 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool)
 	if axis.Norm2() == 0 {
 		axis = mathx.Vec3{X: 0.32, Y: 0, Z: 0.95}
 	}
-
-	axisYaw := 0.0
-	horiz := math.Hypot(axis.X, axis.Y)
-	if horiz > 1e-9 {
-		axisYaw = math.Atan2(axis.Y, axis.X)
-	}
-	axisTilt := horiz
-	if axisTilt < 0.08 {
-		axisTilt = 0.32
-	}
-	if axisTilt > 0.78 {
-		axisTilt = 0.78
-	}
+	axisYaw, axisPitch := axisYawPitchFromVec(axis)
 
 	if couplerEnabled {
 		couplerState.Params.DirectionalEnabled = true
-		couplerState.Params.FieldAxisBody = axisFromYawAndTilt(axisYaw, axisTilt)
+		couplerState.Params.FieldAxisBody = axisFromYawPitch(axisYaw, axisPitch)
 	}
 
 	ampAxisRate := couplerState.Params.AmpRate
@@ -426,6 +426,9 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool)
 		phiAxisRate = 3.0
 	}
 	yawAxisRate := 1.5
+	pitchAxisRate := 1.2
+	minAxisPitch := -1.45
+	maxAxisPitch := 1.45
 
 	negMassConvention := strings.ToUpper(strings.TrimSpace(cfg.GravityModel.NegMass.Convention))
 	if negMassConvention != "C1" && negMassConvention != "C2" {
@@ -442,43 +445,50 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool)
 
 	now := time.Now().UTC()
 	session := &gameSession{
-		id:                 id,
-		scenarioPath:       cfgPath,
-		scenarioName:       cfg.Name,
-		createdAt:          now,
-		updatedAt:          now,
-		dt:                 cfg.Dt,
-		bodies:             cfg.BodiesRuntime(),
-		craft:              cfg.CraftRuntime(),
-		env:                cfg.EnvironmentRuntime(),
-		primaryIdx:         cfg.Environment.PrimaryBodyIdx,
-		couplerState:       couplerState,
-		couplerEnabled:     couplerEnabled,
-		basePllKp:          couplerState.Params.PllKp,
-		basePllKi:          couplerState.Params.PllKi,
-		gravityModel:       gravityModel,
-		yukawaAlpha:        cfg.GravityModel.Yukawa.Alpha,
-		yukawaLambda:       cfg.GravityModel.Yukawa.Lambda,
-		negMassConvention:  negMassConvention,
-		negMassQGCraft:     negMassQGCraft,
+		id:                  id,
+		scenarioPath:        cfgPath,
+		scenarioName:        cfg.Name,
+		createdAt:           now,
+		updatedAt:           now,
+		dt:                  cfg.Dt,
+		bodies:              cfg.BodiesRuntime(),
+		craft:               cfg.CraftRuntime(),
+		env:                 cfg.EnvironmentRuntime(),
+		primaryIdx:          cfg.Environment.PrimaryBodyIdx,
+		couplerState:        couplerState,
+		couplerEnabled:      couplerEnabled,
+		basePllKp:           couplerState.Params.PllKp,
+		basePllKi:           couplerState.Params.PllKi,
+		gravityModel:        gravityModel,
+		yukawaAlpha:         cfg.GravityModel.Yukawa.Alpha,
+		yukawaLambda:        cfg.GravityModel.Yukawa.Lambda,
+		negMassConvention:   negMassConvention,
+		negMassQGCraft:      negMassQGCraft,
 		negMassRunawayLimit: negMassRunawayLimit,
-		negMassOverrides:   copyChargeOverrides(cfg.GravityModel.NegMass.QGOverrides),
+		negMassOverrides:    copyChargeOverrides(cfg.GravityModel.NegMass.QGOverrides),
 		controls: gameControlState{
 			AmpTarget:   couplerState.Cmd.Amplitude,
 			ThetaTarget: couplerState.Cmd.ThetaTarget,
 			AxisYaw:     axisYaw,
+			AxisPitch:   axisPitch,
 			LockAssist:  true,
 		},
 		limits: gameControlLimits{
-			AmpAxisRate: ampAxisRate,
-			PhiAxisRate: phiAxisRate,
-			YawAxisRate: yawAxisRate,
-			AxisTilt:    axisTilt,
+			AmpAxisRate:   ampAxisRate,
+			PhiAxisRate:   phiAxisRate,
+			YawAxisRate:   yawAxisRate,
+			PitchAxisRate: pitchAxisRate,
+			MinAxisPitch:  minAxisPitch,
+			MaxAxisPitch:  maxAxisPitch,
 		},
+	}
+	if shipType, ok := normalizeShipTypeForGame(shipTypeOverride); ok {
+		session.craft.ShipType = shipType
 	}
 
 	session.controls.AmpTarget = mathx.Clamp(session.controls.AmpTarget, couplerState.Params.MinAmplitude, couplerState.Params.MaxAmplitude)
 	session.controls.ThetaTarget = mathx.WrapAngle(session.controls.ThetaTarget)
+	session.controls.AxisPitch = mathx.Clamp(session.controls.AxisPitch, session.limits.MinAxisPitch, session.limits.MaxAxisPitch)
 	if startOnGround && session.env.Ground.Enabled {
 		session.placeCraftOnGround()
 	}
@@ -501,6 +511,20 @@ func copyChargeOverrides(in map[string]float64) map[string]float64 {
 		out[strings.ToLower(trimmed)] = value
 	}
 	return out
+}
+
+func normalizeShipTypeForGame(raw string) (string, bool) {
+	ship := strings.ToLower(strings.TrimSpace(raw))
+	switch ship {
+	case "":
+		return "", false
+	case "saucer", "sphere", "egg", "pyramid":
+		return ship, true
+	case "flat_triangle", "flat-triangle", "flat triangle", "triangle", "delta":
+		return "flat_triangle", true
+	default:
+		return "", false
+	}
 }
 
 func (gs *gameSession) LastUpdated() time.Time {
@@ -561,10 +585,12 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	ampAxis := mathx.Clamp(input.AmpAxis, -1, 1)
 	phiAxis := mathx.Clamp(input.PhiAxis, -1, 1)
 	yawAxis := mathx.Clamp(input.YawAxis, -1, 1)
+	pitchAxis := mathx.Clamp(input.PitchAxis, -1, 1)
 
 	gs.controls.AmpAxis = ampAxis
 	gs.controls.PhiAxis = phiAxis
 	gs.controls.YawAxis = yawAxis
+	gs.controls.PitchAxis = pitchAxis
 	if input.LockAssist != nil {
 		gs.controls.LockAssist = *input.LockAssist
 	}
@@ -576,6 +602,7 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	)
 	gs.controls.ThetaTarget = mathx.WrapAngle(gs.controls.ThetaTarget + phiAxis*gs.limits.PhiAxisRate*dt)
 	gs.controls.AxisYaw = mathx.WrapAngle(gs.controls.AxisYaw + yawAxis*gs.limits.YawAxisRate*dt)
+	gs.controls.AxisPitch = mathx.Clamp(gs.controls.AxisPitch+pitchAxis*gs.limits.PitchAxisRate*dt, gs.limits.MinAxisPitch, gs.limits.MaxAxisPitch)
 
 	if !gs.couplerEnabled {
 		return
@@ -590,7 +617,7 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	}
 
 	gs.couplerState.Params.DirectionalEnabled = true
-	gs.couplerState.Params.FieldAxisBody = axisFromYawAndTilt(gs.controls.AxisYaw, gs.limits.AxisTilt)
+	gs.couplerState.Params.FieldAxisBody = axisFromYawPitch(gs.controls.AxisYaw, gs.controls.AxisPitch)
 
 	omegaBase := gs.couplerState.OmegaBase
 	if gs.controls.LockAssist {
@@ -604,14 +631,32 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	gs.couplerState.Update(dt)
 }
 
-func axisFromYawAndTilt(yaw, tilt float64) mathx.Vec3 {
-	t := mathx.Clamp(tilt, 0, 0.95)
-	z := math.Sqrt(math.Max(0, 1-t*t))
-	return mathx.Vec3{
-		X: math.Cos(yaw) * t,
-		Y: math.Sin(yaw) * t,
-		Z: z,
+func axisFromYawPitch(yaw, pitch float64) mathx.Vec3 {
+	p := mathx.Clamp(pitch, -1.55, 1.55)
+	cp := math.Cos(p)
+	v := mathx.Vec3{
+		X: math.Cos(yaw) * cp,
+		Y: math.Sin(yaw) * cp,
+		Z: math.Sin(p),
 	}
+	if v.Norm2() == 0 {
+		return mathx.Vec3{Z: 1}
+	}
+	return v.Normalize()
+}
+
+func axisYawPitchFromVec(v mathx.Vec3) (float64, float64) {
+	if v.Norm2() == 0 {
+		return 0, math.Pi / 2
+	}
+	n := v.Normalize()
+	h := math.Hypot(n.X, n.Y)
+	yaw := 0.0
+	if h > 1e-9 {
+		yaw = math.Atan2(n.Y, n.X)
+	}
+	pitch := math.Atan2(n.Z, h)
+	return yaw, pitch
 }
 
 func (gs *gameSession) evaluateGravityLocked() gameGravityEval {
@@ -697,10 +742,11 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 	vertVel := gs.craft.Velocity.Sub(primary.Velocity).Dot(up)
 
 	return gameStepState{
-		Step: gs.step,
-		Time: gs.simTime,
-		Dt:   gs.dt,
+		Step:      gs.step,
+		Time:      gs.simTime,
+		Dt:        gs.dt,
 		CraftMass: gs.craft.Mass,
+		ShipType:  gs.craft.ShipType,
 
 		Position:        gs.craft.Position,
 		Velocity:        gs.craft.Velocity,
@@ -710,29 +756,29 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		PrimaryPosition: primary.Position,
 		PrimaryRadius:   primary.Radius,
 
-		GRaw:          eval.raw,
-		GRawMag:       eval.raw.Norm(),
-		EffectiveG:    eval.effective,
-		EffectiveGMag: eval.effective.Norm(),
-		GravPower:     gs.craft.Mass * eval.effective.Dot(gs.craft.Velocity),
-		GravityModel:  gs.gravityModel,
+		GRaw:           eval.raw,
+		GRawMag:        eval.raw.Norm(),
+		EffectiveG:     eval.effective,
+		EffectiveGMag:  eval.effective.Norm(),
+		GravPower:      gs.craft.Mass * eval.effective.Dot(gs.craft.Velocity),
+		GravityModel:   gs.gravityModel,
 		CouplerEnabled: gs.couplerEnabled,
 
 		CouplingC:   gs.couplerState.C,
 		CouplingK:   gs.couplerState.K,
 		CouplingPhi: gs.couplerState.Phi,
 
-		PhaseError:  gs.couplerState.PhaseError,
-		LockQuality: gs.couplerState.LockQuality,
-		LockFlag:    gs.couplerState.LockQuality >= 0.5,
-		DriveAmp:    gs.couplerState.ADrive,
-		OmegaBase:   gs.couplerState.OmegaBase,
-		DriveOmega:  gs.couplerState.OmegaDrive,
-		DrivePhase:  gs.couplerState.ThetaDrive,
+		PhaseError:   gs.couplerState.PhaseError,
+		LockQuality:  gs.couplerState.LockQuality,
+		LockFlag:     gs.couplerState.LockQuality >= 0.5,
+		DriveAmp:     gs.couplerState.ADrive,
+		OmegaBase:    gs.couplerState.OmegaBase,
+		DriveOmega:   gs.couplerState.OmegaDrive,
+		DrivePhase:   gs.couplerState.ThetaDrive,
 		PLLFreqDelta: gs.couplerState.DeltaOmega,
-		OscMag:      cmplx.Abs(gs.couplerState.Z),
-		DrivePower:  gs.couplerState.DrivePower,
-		Energy:      gs.couplerState.Energy,
+		OscMag:       cmplx.Abs(gs.couplerState.Z),
+		DrivePower:   gs.couplerState.DrivePower,
+		Energy:       gs.couplerState.Energy,
 
 		YukawaAlpha:            gs.yukawaAlpha,
 		YukawaLambda:           gs.yukawaLambda,
@@ -751,10 +797,15 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		ControlAmpTarget:   gs.controls.AmpTarget,
 		ControlThetaTarget: gs.controls.ThetaTarget,
 		ControlAxisYaw:     gs.controls.AxisYaw,
+		ControlAxisPitch:   gs.controls.AxisPitch,
+		ControlWarpX:       gs.couplerState.Params.FieldAxisBody.X,
+		ControlWarpY:       gs.couplerState.Params.FieldAxisBody.Y,
+		ControlWarpZ:       gs.couplerState.Params.FieldAxisBody.Z,
 		ControlLockAssist:  gs.controls.LockAssist,
 		ControlAmpAxis:     gs.controls.AmpAxis,
 		ControlPhiAxis:     gs.controls.PhiAxis,
 		ControlYawAxis:     gs.controls.YawAxis,
+		ControlPitchAxis:   gs.controls.PitchAxis,
 	}
 }
 

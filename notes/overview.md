@@ -204,5 +204,24 @@ Geodesic/gravity drive: keep spacetime mostly "normal", but create a local curva
 
 So really this gives us access to warp drives for interstellar travel. Shout out to PBS Spacetime, who I will be watching all night about this now
 
+Perfect resonant energy vault:
+So I had this idea, I was only thinking before about crystals sloshing around between 2 of them, but then I had an idea. What if you had this geometry of them linked together, so that it's all perfectly aligned and timed so that the capacity gets insane and the loss is extremely low, and then you'd a shit ton of energy into it to make it as dense as possible, ideally this geometry would make the density much more possible, and the timing much more reaonable
+
+If I had to take a wild guess it's something related to a 3, 6, or 9, or that trio of numbers, as some sort of guide for scaling and laying out these proportions
+
+My exact phrasing was a singularity of peizo electric energy, this would be the High Q system
 
 Now power? How does that work? Bob Lazar talks about this element that can be made with hydron colliders, but is unstable, did you know that oscilation and resonnance can make things stabilize? Built in compact nuclear power
+
+I found a video today on from Bob Lazar on the power, this isn't important to the simulation itself exactly, but it's interesting
+element 115 is bombarded with a proton and then it turns into element 116
+immediately decays
+irradiates antimater release in a vaccuum into a tune tube
+matter and antimater collide to cancel out and convert into energy
+it then interacts with the gassiest matter target at the end of the tune tube
+nearly 100% efficient heat to energy reactor
+
+element 115 is musocovium
+
+moscovium can be created with a hydron collider but it comes out unstable however we can identify the frequency it resonates at we can stablize it as long as we can pump energy into it to sustain it
+

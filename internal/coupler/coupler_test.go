@@ -97,6 +97,69 @@ func TestPLLLockReducesFrequencyError(t *testing.T) {
 	}
 }
 
+func TestCouplingPhaseCommandDoesNotForcePLLDetune(t *testing.T) {
+	p := Params{
+		Omega0:           40,
+		Q:                30,
+		Beta:             1,
+		Alpha:            1,
+		KMax:             10,
+		DefaultC:         1,
+		PllKp:            8,
+		PllKi:            4,
+		LockOmegaWindow:  6,
+		LockCollapse:     1,
+		LockRecover:      3,
+		PowerC1:          0,
+		PowerC2:          0,
+		EnergyInitial:    1,
+		MinAmplitude:     0,
+		MaxAmplitude:     10,
+		AmpRate:          100,
+		ThetaRate:        100,
+		MinOmegaBase:     0,
+		MaxOmegaBase:     80,
+		OmegaBaseRate:    100,
+		InitialAmplitude: 2,
+		InitialOmegaBase: 40,
+	}
+	s := New(p)
+	s.SetCommand(Command{Amplitude: 2, OmegaBase: 40, ThetaTarget: 0})
+
+	for i := 0; i < 20000; i++ {
+		s.Update(0.0005)
+	}
+	omegaBefore := s.OmegaDrive
+	phiBefore := s.Phi
+
+	s.SetCommand(Command{Amplitude: 2, OmegaBase: 40, ThetaTarget: math.Pi / 2})
+	for i := 0; i < 20000; i++ {
+		s.Update(0.0005)
+	}
+	omegaAfter := s.OmegaDrive
+	phiAfter := s.Phi
+
+	if math.Abs(omegaAfter-s.Params.Omega0) > 0.25*s.Params.LockOmegaWindow {
+		t.Fatalf("phase command should not force PLL detune: omega_after=%f omega0=%f window=%f", omegaAfter, s.Params.Omega0, s.Params.LockOmegaWindow)
+	}
+	if math.Abs(omegaBefore-omegaAfter) > 0.25*s.Params.LockOmegaWindow {
+		t.Fatalf("phase command changed drive frequency too much: before=%f after=%f", omegaBefore, omegaAfter)
+	}
+	if math.Abs(mathxWrapAngle(phiAfter-phiBefore)) < 0.4 {
+		t.Fatalf("expected coupling phase shift from command: before=%f after=%f", phiBefore, phiAfter)
+	}
+}
+
 func cmag(z complex128) float64 {
 	return math.Hypot(real(z), imag(z))
+}
+
+func mathxWrapAngle(v float64) float64 {
+	for v > math.Pi {
+		v -= 2 * math.Pi
+	}
+	for v < -math.Pi {
+		v += 2 * math.Pi
+	}
+	return v
 }

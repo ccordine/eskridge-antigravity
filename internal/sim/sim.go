@@ -27,6 +27,7 @@ type Sample struct {
 	EffectiveG    mathx.Vec3
 	EffectiveGMag float64
 	GravityModel  string
+	ShipType      string
 
 	CouplingC   float64
 	CouplingK   float64
@@ -39,18 +40,18 @@ type Sample struct {
 	OmegaDrive  float64
 	Omega0      float64
 
-	YukawaAlpha             float64
-	YukawaLambda            float64
-	YukawaRepulsionPrimary  float64
-	YukawaKernelPrimary     float64
-	NegMassConvention       string
-	QGCraft                 float64
-	QGPrimary               float64
-	InertialMassSign        float64
-	RunawayAccelMag         float64
-	RunawayAccelLimit       float64
-	RunawayAccelFlag        bool
-	RunawayExpectedUnderC2  bool
+	YukawaAlpha            float64
+	YukawaLambda           float64
+	YukawaRepulsionPrimary float64
+	YukawaKernelPrimary    float64
+	NegMassConvention      string
+	QGCraft                float64
+	QGPrimary              float64
+	InertialMassSign       float64
+	RunawayAccelMag        float64
+	RunawayAccelLimit      float64
+	RunawayAccelFlag       bool
+	RunawayExpectedUnderC2 bool
 
 	GravPower float64
 }
@@ -174,26 +175,27 @@ func Run(cfg config.Scenario, sink func(Sample) error) (Result, error) {
 			vertVel := craft.Velocity.Sub(primary.Velocity).Dot(up)
 
 			s := Sample{
-				Step:          step,
-				Time:          t,
-				Position:      craft.Position,
-				Velocity:      craft.Velocity,
-				Altitude:      altitude,
-				VerticalVel:   vertVel,
-				GRaw:          gRaw,
-				GRawMag:       gRaw.Norm(),
-				EffectiveG:    aG,
-				EffectiveGMag: aG.Norm(),
-				GravityModel:  gravityModel,
-				CouplingC:     couplerState.C,
-				CouplingK:     couplerState.K,
-				CouplingPhi:   couplerState.Phi,
-				PhaseError:    couplerState.PhaseError,
-				DrivePower:    couplerState.DrivePower,
-				Energy:        couplerState.Energy,
-				LockQuality:   couplerState.LockQuality,
-				OmegaDrive:    couplerState.OmegaDrive,
-				Omega0:        couplerState.Params.Omega0,
+				Step:                   step,
+				Time:                   t,
+				Position:               craft.Position,
+				Velocity:               craft.Velocity,
+				Altitude:               altitude,
+				VerticalVel:            vertVel,
+				GRaw:                   gRaw,
+				GRawMag:                gRaw.Norm(),
+				EffectiveG:             aG,
+				EffectiveGMag:          aG.Norm(),
+				GravityModel:           gravityModel,
+				ShipType:               craft.ShipType,
+				CouplingC:              couplerState.C,
+				CouplingK:              couplerState.K,
+				CouplingPhi:            couplerState.Phi,
+				PhaseError:             couplerState.PhaseError,
+				DrivePower:             couplerState.DrivePower,
+				Energy:                 couplerState.Energy,
+				LockQuality:            couplerState.LockQuality,
+				OmegaDrive:             couplerState.OmegaDrive,
+				Omega0:                 couplerState.Params.Omega0,
 				YukawaAlpha:            cfg.GravityModel.Yukawa.Alpha,
 				YukawaLambda:           cfg.GravityModel.Yukawa.Lambda,
 				YukawaRepulsionPrimary: yukawaRepulsionPrimary,
@@ -206,7 +208,7 @@ func Run(cfg config.Scenario, sink func(Sample) error) (Result, error) {
 				RunawayAccelLimit:      sampleRunawayLimit,
 				RunawayAccelFlag:       runawayFlag,
 				RunawayExpectedUnderC2: runawayExpectedUnderC2,
-				GravPower:     craft.Mass * aG.Dot(craft.Velocity),
+				GravPower:              craft.Mass * aG.Dot(craft.Velocity),
 			}
 			if err := sink(s); err != nil {
 				return Result{}, err

@@ -2,6 +2,7 @@ package control
 
 import (
 	"math"
+	"math/cmplx"
 
 	"github.com/example/acs/internal/coupler"
 	"github.com/example/acs/internal/mathx"
@@ -76,7 +77,8 @@ func (h *HoverController) Update(dt float64, craft physics.Craft, bodies []physi
 	ratio := cTarget / kTarget
 	ratio = mathx.Clamp(ratio, -1, 1)
 	phiTarget := math.Acos(ratio)
-	thetaTarget := mathx.WrapAngle(phiTarget - couplerState.Params.PhiBias)
+	lockDelta := mathx.WrapAngle(cmplx.Phase(couplerState.Z) - couplerState.ThetaDrive)
+	thetaTarget := mathx.WrapAngle(phiTarget - couplerState.Params.PhiBias - lockDelta)
 
 	gamma := 0.0
 	if couplerState.Params.Q > 0 {

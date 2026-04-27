@@ -71,10 +71,10 @@ func TestHoverControllerKeepsAltitudeBounded(t *testing.T) {
 	}
 
 	delta := math.Abs(last.Altitude - first.Altitude)
-	if delta > 400 {
+	if delta > 30 {
 		t.Fatalf("hover drift too large: %.3f m", delta)
 	}
-	if math.Abs(last.VerticalVel) > 40 {
+	if math.Abs(last.VerticalVel) > 10 {
 		t.Fatalf("hover vertical velocity too high: %.3f m/s", last.VerticalVel)
 	}
 	if last.Energy >= first.Energy {

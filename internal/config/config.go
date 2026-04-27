@@ -13,17 +13,17 @@ import (
 )
 
 type Scenario struct {
-	Name        string            `json:"name"`
-	Seed        int64             `json:"seed"`
-	Dt          float64           `json:"dt"`
-	Duration    float64           `json:"duration"`
-	LogEvery    int               `json:"log_every"`
-	Bodies      []BodyConfig      `json:"bodies"`
-	Craft       CraftConfig       `json:"craft"`
-	Environment EnvironmentConfig `json:"environment"`
+	Name         string             `json:"name"`
+	Seed         int64              `json:"seed"`
+	Dt           float64            `json:"dt"`
+	Duration     float64            `json:"duration"`
+	LogEvery     int                `json:"log_every"`
+	Bodies       []BodyConfig       `json:"bodies"`
+	Craft        CraftConfig        `json:"craft"`
+	Environment  EnvironmentConfig  `json:"environment"`
 	GravityModel GravityModelConfig `json:"gravity_model"`
-	Coupler     CouplerConfig     `json:"coupler"`
-	Controller  ControllerConfig  `json:"controller"`
+	Coupler      CouplerConfig      `json:"coupler"`
+	Controller   ControllerConfig   `json:"controller"`
 }
 
 type BodyConfig struct {
@@ -36,6 +36,7 @@ type BodyConfig struct {
 
 type CraftConfig struct {
 	Mass            float64    `json:"mass"`
+	ShipType        string     `json:"ship_type"`
 	InertiaDiagonal [3]float64 `json:"inertia_diagonal"`
 	Position        [3]float64 `json:"position"`
 	Velocity        [3]float64 `json:"velocity"`
@@ -73,8 +74,8 @@ type GroundConfig struct {
 }
 
 type GravityModelConfig struct {
-	Type    string            `json:"type"`
-	Yukawa  YukawaConfig      `json:"yukawa"`
+	Type    string             `json:"type"`
+	Yukawa  YukawaConfig       `json:"yukawa"`
 	NegMass NegMassModelConfig `json:"negmass"`
 }
 
@@ -176,6 +177,15 @@ func (s *Scenario) Validate() error {
 	if s.Craft.Mass <= 0 {
 		return fmt.Errorf("craft.mass must be > 0")
 	}
+	shipType := strings.ToLower(strings.TrimSpace(s.Craft.ShipType))
+	if shipType == "" {
+		shipType = "saucer"
+	}
+	normalizedShipType, ok := normalizeShipType(shipType)
+	if !ok {
+		return fmt.Errorf("craft.ship_type must be saucer, sphere, egg, pyramid, or flat_triangle")
+	}
+	s.Craft.ShipType = normalizedShipType
 	if s.Environment.G == 0 {
 		return fmt.Errorf("environment.g must be non-zero")
 	}
@@ -223,6 +233,23 @@ func (s *Scenario) Validate() error {
 	return nil
 }
 
+func normalizeShipType(ship string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(ship)) {
+	case "saucer":
+		return "saucer", true
+	case "sphere":
+		return "sphere", true
+	case "egg":
+		return "egg", true
+	case "pyramid":
+		return "pyramid", true
+	case "flat_triangle", "flat-triangle", "flat triangle", "triangle", "delta":
+		return "flat_triangle", true
+	default:
+		return "", false
+	}
+}
+
 func (s Scenario) BodiesRuntime() []physics.CelestialBody {
 	out := make([]physics.CelestialBody, 0, len(s.Bodies))
 	for _, b := range s.Bodies {
@@ -244,6 +271,7 @@ func (s Scenario) CraftRuntime() physics.Craft {
 	}
 	return physics.Craft{
 		Mass:            s.Craft.Mass,
+		ShipType:        s.Craft.ShipType,
 		InertiaDiagonal: v3(s.Craft.InertiaDiagonal),
 		Position:        v3(s.Craft.Position),
 		Velocity:        v3(s.Craft.Velocity),

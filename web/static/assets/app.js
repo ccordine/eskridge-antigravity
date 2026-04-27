@@ -1605,7 +1605,9 @@ const state = {
     latest: null,
     trailTop: [],
     trailSide: [],
-    maxTrail: 900
+    trail3D: [],
+    maxTrail: 900,
+    mapMode: 'planetary'
   },
   input: {
     keys: Object.create(null),
@@ -1615,23 +1617,28 @@ const state = {
       manualAmp: 0,
       manualPhi: 0,
       manualYaw: 0,
+      manualPitch: 0,
       autoAmp: 0,
       autoPhi: 0,
       autoYaw: 0,
+      autoPitch: 0,
       finalAmp: 0,
       finalPhi: 0,
-      finalYaw: 0
+      finalYaw: 0,
+      finalPitch: 0
     }
   },
   exporting: false
 };
 
 class DualViewRenderer {
-  constructor(topCanvas, sideCanvas) {
+  constructor(topCanvas, sideCanvas, worldCanvas) {
     this.topCanvas = topCanvas;
     this.sideCanvas = sideCanvas;
+    this.worldCanvas = worldCanvas;
     this.topCtx = topCanvas.getContext('2d');
     this.sideCtx = sideCanvas.getContext('2d');
+    this.worldCtx = worldCanvas ? worldCanvas.getContext('2d') : null;
     this.camTop = { x: 0, y: 0 };
     this.camSide = { x: 0, alt: 0 };
     this.resize();
@@ -1640,6 +1647,9 @@ class DualViewRenderer {
   resize() {
     this.resizeCanvas(this.topCanvas, this.topCtx);
     this.resizeCanvas(this.sideCanvas, this.sideCtx);
+    if (this.worldCanvas && this.worldCtx) {
+      this.resizeCanvas(this.worldCanvas, this.worldCtx);
+    }
   }
 
   resizeCanvas(canvas, ctx) {
@@ -1651,16 +1661,18 @@ class DualViewRenderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  draw(sample, trailTop, trailSide) {
-    this.drawTop(sample, trailTop);
-    this.drawSide(sample, trailSide);
+  draw(sample, trailTop, trailSide, trail3D, mapMode) {
+    this.drawTop(sample, trailTop, mapMode);
+    this.drawSide(sample, trailSide, mapMode);
+    this.drawWorld(sample, trail3D, mapMode);
   }
 
-  drawTop(sample, trail) {
+  drawTop(sample, trail, mapMode) {
     const ctx = this.topCtx;
     const canvas = this.topCanvas;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    const mode = mapMode === 'local' ? 'local' : 'planetary';
 
     ctx.clearRect(0, 0, w, h);
     this.paintBackdrop(ctx, w, h);
@@ -1671,20 +1683,39 @@ class DualViewRenderer {
       return;
     }
 
-    this.camTop.x = this.lerp(this.camTop.x, sample.position.x, 0.14);
-    this.camTop.y = this.lerp(this.camTop.y, sample.position.y, 0.14);
+    const shipType = String(sample.ship_type || 'saucer').toLowerCase();
+    let craftX = w * 0.5;
+    let craftY = h * 0.5;
+    let topScale = 1;
 
-    const topScale = this.scaleFromTrail(trail, w, h, (point) => [point.x - this.camTop.x, point.y - this.camTop.y], 1200);
-    this.paintTrail(ctx, trail, topScale, w, h, (point) => ({
-      x: (point.x - this.camTop.x) * topScale + w * 0.5,
-      y: h * 0.5 - (point.y - this.camTop.y) * topScale
-    }), 'rgba(15, 106, 115, 0.45)');
+    if (mode === 'planetary' && Number.isFinite(sample.primary_radius) && sample.primary_radius > 0) {
+      topScale = this.scaleFromPlanetaryTrail(trail, w, h, sample.primary_radius, (point) => [point.rx, point.ry], 0.6);
+      this.paintPlanetCircle(ctx, w * 0.5, h * 0.5, sample.primary_radius * topScale);
+      this.paintTrail(ctx, trail, topScale, w, h, (point) => ({
+        x: (point.rx * topScale) + w * 0.5,
+        y: h * 0.5 - (point.ry * topScale)
+      }), 'rgba(15, 106, 115, 0.45)');
+      const rx = Number.isFinite(sample.position?.x) && Number.isFinite(sample.primary_position?.x)
+        ? (sample.position.x - sample.primary_position.x)
+        : 0;
+      const ry = Number.isFinite(sample.position?.y) && Number.isFinite(sample.primary_position?.y)
+        ? (sample.position.y - sample.primary_position.y)
+        : 0;
+      craftX = w * 0.5 + (rx * topScale);
+      craftY = h * 0.5 - (ry * topScale);
+    } else {
+      this.camTop.x = this.lerp(this.camTop.x, sample.position.x, 0.14);
+      this.camTop.y = this.lerp(this.camTop.y, sample.position.y, 0.14);
+      topScale = this.scaleFromTrail(trail, w, h, (point) => [point.x - this.camTop.x, point.y - this.camTop.y], 1200);
+      this.paintTrail(ctx, trail, topScale, w, h, (point) => ({
+        x: (point.x - this.camTop.x) * topScale + w * 0.5,
+        y: h * 0.5 - (point.y - this.camTop.y) * topScale
+      }), 'rgba(15, 106, 115, 0.45)');
+    }
 
-    const craftX = w * 0.5;
-    const craftY = h * 0.5;
-    this.paintCraft(ctx, craftX, craftY, '#0f6a73');
+    this.paintCraft(ctx, craftX, craftY, '#0f6a73', 'top', shipType);
 
-    const velScale = 1.9;
+    const velScale = mode === 'planetary' ? Math.max(14, topScale * sample.primary_radius * 0.05) : 1.9;
     this.paintArrow(
       ctx,
       craftX,
@@ -1694,7 +1725,7 @@ class DualViewRenderer {
       '#2b4a77'
     );
 
-    const gravScale = 18;
+    const gravScale = mode === 'planetary' ? Math.max(22, topScale * sample.primary_radius * 0.08) : 18;
     this.paintArrow(
       ctx,
       craftX,
@@ -1704,18 +1735,23 @@ class DualViewRenderer {
       '#9b4d1e'
     );
 
-    this.paintLegend(ctx, w, [
+    const legend = [
       ['craft', '#0f6a73'],
       ['velocity', '#2b4a77'],
       ['gravity', '#9b4d1e']
-    ]);
+    ];
+    if (mode === 'planetary') {
+      legend.unshift(['earth', '#35617f']);
+    }
+    this.paintLegend(ctx, w, legend);
   }
 
-  drawSide(sample, trail) {
+  drawSide(sample, trail, mapMode) {
     const ctx = this.sideCtx;
     const canvas = this.sideCanvas;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    const mode = mapMode === 'local' ? 'local' : 'planetary';
 
     ctx.clearRect(0, 0, w, h);
     this.paintBackdrop(ctx, w, h);
@@ -1726,39 +1762,58 @@ class DualViewRenderer {
       return;
     }
 
-    this.camSide.x = this.lerp(this.camSide.x, sample.position.x, 0.14);
-    this.camSide.alt = this.lerp(this.camSide.alt, sample.altitude, 0.12);
+    const shipType = String(sample.ship_type || 'saucer').toLowerCase();
+    let craftX = w * 0.5;
+    let craftY = h * 0.5;
+    let sideScale = 1;
 
-    const sideScale = this.scaleFromTrail(trail, w, h, (point) => [point.x - this.camSide.x, point.alt - this.camSide.alt], 800);
+    if (mode === 'planetary' && Number.isFinite(sample.primary_radius) && sample.primary_radius > 0) {
+      sideScale = this.scaleFromPlanetaryTrail(trail, w, h, sample.primary_radius, (point) => [point.rx, point.rz], 0.56);
+      this.paintPlanetCircle(ctx, w * 0.5, h * 0.5, sample.primary_radius * sideScale);
+      this.paintTrail(ctx, trail, sideScale, w, h, (point) => ({
+        x: (point.rx * sideScale) + w * 0.5,
+        y: h * 0.5 - (point.rz * sideScale)
+      }), 'rgba(88, 125, 47, 0.45)');
+      const rx = Number.isFinite(sample.position?.x) && Number.isFinite(sample.primary_position?.x)
+        ? (sample.position.x - sample.primary_position.x)
+        : 0;
+      const rz = Number.isFinite(sample.position?.z) && Number.isFinite(sample.primary_position?.z)
+        ? (sample.position.z - sample.primary_position.z)
+        : 0;
+      craftX = w * 0.5 + (rx * sideScale);
+      craftY = h * 0.5 - (rz * sideScale);
+    } else {
+      this.camSide.x = this.lerp(this.camSide.x, sample.position.x, 0.14);
+      this.camSide.alt = this.lerp(this.camSide.alt, sample.altitude, 0.12);
+      sideScale = this.scaleFromTrail(trail, w, h, (point) => [point.x - this.camSide.x, point.alt - this.camSide.alt], 800);
 
-    const groundY = h * 0.5 + this.camSide.alt * sideScale;
-    ctx.strokeStyle = 'rgba(120, 95, 66, 0.7)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(0, groundY);
-    ctx.lineTo(w, groundY);
-    ctx.stroke();
+      const groundY = h * 0.5 + this.camSide.alt * sideScale;
+      ctx.strokeStyle = 'rgba(120, 95, 66, 0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY);
+      ctx.lineTo(w, groundY);
+      ctx.stroke();
 
-    this.paintTrail(ctx, trail, sideScale, w, h, (point) => ({
-      x: (point.x - this.camSide.x) * sideScale + w * 0.5,
-      y: h * 0.5 - (point.alt - this.camSide.alt) * sideScale
-    }), 'rgba(88, 125, 47, 0.45)');
+      this.paintTrail(ctx, trail, sideScale, w, h, (point) => ({
+        x: (point.x - this.camSide.x) * sideScale + w * 0.5,
+        y: h * 0.5 - (point.alt - this.camSide.alt) * sideScale
+      }), 'rgba(88, 125, 47, 0.45)');
+    }
 
-    const craftX = w * 0.5;
-    const craftY = h * 0.5;
-    this.paintCraft(ctx, craftX, craftY, '#587d2f');
+    this.paintCraft(ctx, craftX, craftY, '#587d2f', 'side', shipType);
 
-    const velScale = 1.9;
+    const velScale = mode === 'planetary' ? Math.max(14, sideScale * sample.primary_radius * 0.05) : 1.9;
     this.paintArrow(
       ctx,
       craftX,
       craftY,
       craftX + sample.velocity.x * velScale,
-      craftY - sample.vertical_vel * velScale,
+      craftY - (mode === 'planetary' ? sample.velocity.z : sample.vertical_vel) * velScale,
       '#2b4a77'
     );
 
-    const gravScale = 18;
+    const gravScale = mode === 'planetary' ? Math.max(22, sideScale * sample.primary_radius * 0.08) : 18;
     this.paintArrow(
       ctx,
       craftX,
@@ -1768,11 +1823,359 @@ class DualViewRenderer {
       '#9b4d1e'
     );
 
-    this.paintLegend(ctx, w, [
+    const legend = [
       ['craft', '#587d2f'],
       ['velocity', '#2b4a77'],
       ['gravity', '#9b4d1e']
+    ];
+    if (mode === 'planetary') {
+      legend.unshift(['earth', '#35617f']);
+    }
+    this.paintLegend(ctx, w, legend);
+  }
+
+  drawWorld(sample, trail, mapMode) {
+    const ctx = this.worldCtx;
+    const canvas = this.worldCanvas;
+    if (!ctx || !canvas) {
+      return;
+    }
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const mode = mapMode === 'planetary' ? 'planetary' : 'local';
+
+    this.paintWorldBackdrop(ctx, w, h, mode);
+
+    if (!sample) {
+      this.paintMessage(ctx, w, h, '3D view appears here once running');
+      return;
+    }
+
+    if (mode === 'planetary') {
+      this.drawWorldPlanetary(ctx, w, h, sample, trail);
+    } else {
+      this.drawWorldLocal(ctx, w, h, sample, trail);
+    }
+  }
+
+  drawWorldLocal(ctx, w, h, sample, trail) {
+    const craft = { x: 0, y: 0, z: Number.parseFloat(sample.altitude) || 0 };
+    const forward = this.safeDirection({
+      x: Number.parseFloat(sample.velocity?.x) || 0,
+      y: Number.parseFloat(sample.velocity?.y) || 0,
+      z: Number.parseFloat(sample.vertical_vel) || 0
+    }, { x: 1, y: 0, z: 0 });
+    const up = { x: 0, y: 0, z: 1 };
+    const camPos = this.add3(craft, this.add3(this.scale3(up, 90), this.scale3(forward, -220)));
+    const target = this.add3(craft, this.scale3(forward, 140));
+    const projector = this.makeProjector(camPos, target, up, w, h, 62);
+
+    this.paintWorldGroundGrid(ctx, projector, 1500, 150, 'rgba(121, 102, 69, 0.46)');
+    this.paintWorldHorizon(ctx, projector, 2200, 'rgba(72, 93, 121, 0.36)');
+
+    const localTrail = Array.isArray(trail)
+      ? trail.map((point) => ({
+        x: (Number.parseFloat(point.x) || 0) - (Number.parseFloat(sample.position?.x) || 0),
+        y: (Number.parseFloat(point.y) || 0) - (Number.parseFloat(sample.position?.y) || 0),
+        z: Number.parseFloat(point.alt) || 0
+      }))
+      : [];
+    this.paintWorldTrail(ctx, localTrail, projector, 'rgba(66, 135, 144, 0.72)', 2.2);
+
+    const shipType = String(sample.ship_type || 'saucer').toLowerCase();
+    this.paintWorldShip(ctx, projector, craft, shipType, '#0f6a73');
+
+    const vel3 = {
+      x: Number.parseFloat(sample.velocity?.x) || 0,
+      y: Number.parseFloat(sample.velocity?.y) || 0,
+      z: Number.parseFloat(sample.vertical_vel) || 0
+    };
+    const g3 = {
+      x: Number.parseFloat(sample.effective_g?.x) || 0,
+      y: Number.parseFloat(sample.effective_g?.y) || 0,
+      z: Number.parseFloat(sample.effective_g?.z) || 0
+    };
+    const velScale = Math.min(260, this.norm3(vel3) * 9);
+    const gravScale = Math.min(180, this.norm3(g3) * 18);
+    this.paintWorldVector(ctx, projector, craft, this.scale3(this.safeDirection(vel3, { x: 1, y: 0, z: 0 }), velScale), '#2b4a77');
+    this.paintWorldVector(ctx, projector, craft, this.scale3(this.safeDirection(g3, { x: 0, y: 0, z: -1 }), gravScale), '#9b4d1e');
+
+    this.paintLegend(ctx, w, [
+      ['3d craft', '#0f6a73'],
+      ['velocity', '#2b4a77'],
+      ['gravity', '#9b4d1e'],
+      ['flat map', '#796645']
     ]);
+  }
+
+  drawWorldPlanetary(ctx, w, h, sample, trail) {
+    if (!Number.isFinite(sample.primary_radius) || sample.primary_radius <= 0) {
+      this.drawWorldLocal(ctx, w, h, sample, trail);
+      return;
+    }
+
+    const craft = {
+      x: (Number.parseFloat(sample.position?.x) || 0) - (Number.parseFloat(sample.primary_position?.x) || 0),
+      y: (Number.parseFloat(sample.position?.y) || 0) - (Number.parseFloat(sample.primary_position?.y) || 0),
+      z: (Number.parseFloat(sample.position?.z) || 0) - (Number.parseFloat(sample.primary_position?.z) || 0)
+    };
+    const up = this.safeDirection(craft, { x: 0, y: 0, z: 1 });
+    const vel = {
+      x: Number.parseFloat(sample.velocity?.x) || 0,
+      y: Number.parseFloat(sample.velocity?.y) || 0,
+      z: Number.parseFloat(sample.velocity?.z) || 0
+    };
+    const vDotUp = this.dot3(vel, up);
+    const velTangent = this.sub3(vel, this.scale3(up, vDotUp));
+    const forward = this.safeDirection(velTangent, this.crossFallback(up));
+
+    const radius = Number.parseFloat(sample.primary_radius) || 1;
+    const camPos = this.add3(craft, this.add3(
+      this.scale3(up, (radius * 0.24) + 180000),
+      this.scale3(forward, -(radius * 0.52 + 260000))
+    ));
+    const target = this.add3(craft, this.scale3(forward, radius * 0.04));
+    const projector = this.makeProjector(camPos, target, up, w, h, 60);
+
+    this.paintWorldGlobe(ctx, projector, radius);
+
+    const globeTrail = Array.isArray(trail)
+      ? trail.map((point) => ({
+        x: Number.parseFloat(point.rx) || 0,
+        y: Number.parseFloat(point.ry) || 0,
+        z: Number.parseFloat(point.rz) || 0
+      }))
+      : [];
+    this.paintWorldTrail(ctx, globeTrail, projector, 'rgba(72, 151, 128, 0.78)', 2.1);
+
+    const shipType = String(sample.ship_type || 'saucer').toLowerCase();
+    this.paintWorldShip(ctx, projector, craft, shipType, '#3c7b62');
+
+    const velScale = radius * 0.028;
+    const gravScale = radius * 0.022;
+    const g3 = {
+      x: Number.parseFloat(sample.effective_g?.x) || 0,
+      y: Number.parseFloat(sample.effective_g?.y) || 0,
+      z: Number.parseFloat(sample.effective_g?.z) || 0
+    };
+    this.paintWorldVector(ctx, projector, craft, this.scale3(this.safeDirection(vel, forward), velScale), '#2b4a77');
+    this.paintWorldVector(ctx, projector, craft, this.scale3(this.safeDirection(g3, this.scale3(up, -1)), gravScale), '#9b4d1e');
+
+    this.paintLegend(ctx, w, [
+      ['earth globe', '#35617f'],
+      ['craft', '#3c7b62'],
+      ['velocity', '#2b4a77'],
+      ['gravity', '#9b4d1e']
+    ]);
+  }
+
+  paintWorldBackdrop(ctx, w, h, mode) {
+    ctx.clearRect(0, 0, w, h);
+    const gradient = ctx.createLinearGradient(0, 0, 0, h);
+    if (mode === 'planetary') {
+      gradient.addColorStop(0, '#101f31');
+      gradient.addColorStop(1, '#223950');
+    } else {
+      gradient.addColorStop(0, '#f2fbff');
+      gradient.addColorStop(1, '#e6efe0');
+    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  paintWorldTrail(ctx, points, projector, color, width) {
+    if (!Array.isArray(points) || points.length < 2) {
+      return;
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    let drawing = false;
+    for (let i = 0; i < points.length; i += 1) {
+      const p = projector(points[i]);
+      if (!p) {
+        drawing = false;
+        continue;
+      }
+      if (!drawing) {
+        ctx.moveTo(p.x, p.y);
+        drawing = true;
+      } else {
+        ctx.lineTo(p.x, p.y);
+      }
+    }
+    ctx.stroke();
+  }
+
+  paintWorldVector(ctx, projector, origin, vec, color) {
+    const a = projector(origin);
+    const b = projector(this.add3(origin, vec));
+    if (!a || !b) {
+      return;
+    }
+    this.paintArrow(ctx, a.x, a.y, b.x, b.y, color);
+  }
+
+  paintWorldSegment(ctx, projector, from, to, color, width = 1) {
+    const a = projector(from);
+    const b = projector(to);
+    if (!a || !b) {
+      return;
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+
+  paintWorldGroundGrid(ctx, projector, range, spacing, color) {
+    for (let x = -range; x <= range; x += spacing) {
+      this.paintWorldSegment(
+        ctx,
+        projector,
+        { x, y: -range, z: 0 },
+        { x, y: range, z: 0 },
+        color
+      );
+    }
+    for (let y = -range; y <= range; y += spacing) {
+      this.paintWorldSegment(
+        ctx,
+        projector,
+        { x: -range, y, z: 0 },
+        { x: range, y, z: 0 },
+        color
+      );
+    }
+  }
+
+  paintWorldHorizon(ctx, projector, range, color) {
+    this.paintWorldSegment(
+      ctx,
+      projector,
+      { x: -range, y: 0, z: 0 },
+      { x: range, y: 0, z: 0 },
+      color,
+      1.6
+    );
+  }
+
+  paintWorldGlobe(ctx, projector, radius) {
+    const center = projector({ x: 0, y: 0, z: 0 });
+    if (!center) {
+      return;
+    }
+    const rightEdge = projector({ x: radius, y: 0, z: 0 });
+    if (!rightEdge) {
+      return;
+    }
+    const screenRadius = Math.hypot(rightEdge.x - center.x, rightEdge.y - center.y);
+    if (!Number.isFinite(screenRadius) || screenRadius <= 1) {
+      return;
+    }
+    const radial = ctx.createRadialGradient(
+      center.x - (screenRadius * 0.25),
+      center.y - (screenRadius * 0.3),
+      screenRadius * 0.25,
+      center.x,
+      center.y,
+      screenRadius
+    );
+    radial.addColorStop(0, 'rgba(105, 174, 195, 0.93)');
+    radial.addColorStop(1, 'rgba(42, 84, 118, 0.96)');
+    ctx.fillStyle = radial;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, screenRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(18, 55, 82, 0.95)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  paintWorldShip(ctx, projector, point, shipType, color) {
+    const p = projector(point);
+    if (!p) {
+      return;
+    }
+    const size = Math.max(4, Math.min(12, 360 / Math.max(80, p.depth)));
+    const type = String(shipType || 'saucer').toLowerCase();
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    if (type === 'sphere') {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size * 0.72, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+	    if (type === 'egg') {
+	      ctx.beginPath();
+	      ctx.ellipse(p.x, p.y, size * 0.6, size * 0.85, 0, 0, Math.PI * 2);
+	      ctx.fill();
+	      ctx.restore();
+	      return;
+	    }
+
+	    if (type === 'pyramid') {
+	      ctx.beginPath();
+	      ctx.moveTo(p.x, p.y - (size * 0.92));
+	      ctx.lineTo(p.x - (size * 0.86), p.y + (size * 0.74));
+	      ctx.lineTo(p.x + (size * 0.86), p.y + (size * 0.74));
+	      ctx.closePath();
+	      ctx.fill();
+	      ctx.restore();
+	      return;
+	    }
+
+	    if (type === 'flat_triangle') {
+	      ctx.beginPath();
+	      ctx.moveTo(p.x, p.y - (size * 0.46));
+	      ctx.lineTo(p.x - (size * 1.15), p.y + (size * 0.34));
+	      ctx.lineTo(p.x + (size * 1.15), p.y + (size * 0.34));
+	      ctx.closePath();
+	      ctx.fill();
+	      ctx.restore();
+	      return;
+	    }
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, size, size * 0.46, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.36)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - (size * 0.16), size * 0.46, size * 0.24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  makeProjector(cameraPos, target, upHint, w, h, fovDeg) {
+    const forward = this.safeDirection(this.sub3(target, cameraPos), { x: 1, y: 0, z: 0 });
+    let right = this.cross3(forward, upHint);
+    if (this.norm3(right) <= 1e-6) {
+      right = this.cross3(forward, { x: 0, y: 0, z: 1 });
+    }
+    right = this.safeDirection(right, { x: 1, y: 0, z: 0 });
+    const up = this.safeDirection(this.cross3(right, forward), { x: 0, y: 0, z: 1 });
+    const near = 1;
+    const focal = (Math.min(w, h) * 0.5) / Math.tan((fovDeg * Math.PI) / 360);
+
+    const project = (point) => {
+      const rel = this.sub3(point, cameraPos);
+      const cx = this.dot3(rel, right);
+      const cy = this.dot3(rel, up);
+      const cz = this.dot3(rel, forward);
+      if (!Number.isFinite(cz) || cz <= near) {
+        return null;
+      }
+      return {
+        x: (w * 0.5) + (cx * focal / cz),
+        y: (h * 0.5) - (cy * focal / cz),
+        depth: cz
+      };
+    };
+    return project;
   }
 
   paintBackdrop(ctx, w, h) {
@@ -1827,11 +2230,119 @@ class DualViewRenderer {
     ctx.stroke();
   }
 
-  paintCraft(ctx, x, y, color) {
-    ctx.fillStyle = color;
+  paintPlanetCircle(ctx, x, y, radius) {
+    if (!Number.isFinite(radius) || radius <= 0.2) {
+      return;
+    }
+    const radial = ctx.createRadialGradient(
+      x - radius * 0.3,
+      y - radius * 0.35,
+      radius * 0.2,
+      x,
+      y,
+      radius
+    );
+    radial.addColorStop(0, 'rgba(94, 154, 180, 0.82)');
+    radial.addColorStop(1, 'rgba(53, 97, 127, 0.90)');
+    ctx.fillStyle = radial;
     ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(19, 54, 78, 0.85)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  paintCraft(ctx, x, y, color, view, shipType) {
+    const type = String(shipType || 'saucer').toLowerCase();
+    const mode = view === 'side' ? 'side' : 'top';
+
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+
+	    if (mode === 'top') {
+	      if (type === 'sphere') {
+	        ctx.beginPath();
+	        ctx.arc(x, y, 6.5, 0, Math.PI * 2);
+	        ctx.fill();
+	      } else if (type === 'egg') {
+	        ctx.beginPath();
+	        ctx.ellipse(x, y, 5.6, 7.4, 0, 0, Math.PI * 2);
+	        ctx.fill();
+	      } else if (type === 'pyramid') {
+	        ctx.beginPath();
+	        ctx.moveTo(x, y - 8.2);
+	        ctx.lineTo(x - 6.8, y + 6.4);
+	        ctx.lineTo(x + 6.8, y + 6.4);
+	        ctx.closePath();
+	        ctx.fill();
+	      } else if (type === 'flat_triangle') {
+	        ctx.beginPath();
+	        ctx.moveTo(x, y - 5.9);
+	        ctx.lineTo(x - 8.4, y + 3.6);
+	        ctx.lineTo(x + 8.4, y + 3.6);
+	        ctx.closePath();
+	        ctx.fill();
+	      } else {
+	        ctx.beginPath();
+	        ctx.arc(x, y, 7, 0, Math.PI * 2);
+	        ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.36)';
+        ctx.beginPath();
+        ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
+
+    if (type === 'sphere') {
+      ctx.beginPath();
+      ctx.arc(x, y, 5.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+	    if (type === 'egg') {
+	      ctx.beginPath();
+	      ctx.ellipse(x + 0.6, y, 4.7, 6.9, 0, 0, Math.PI * 2);
+	      ctx.fill();
+	      ctx.restore();
+	      return;
+	    }
+
+	    if (type === 'pyramid') {
+	      ctx.beginPath();
+	      ctx.moveTo(x, y - 6.8);
+	      ctx.lineTo(x - 7.4, y + 6.2);
+	      ctx.lineTo(x + 7.4, y + 6.2);
+	      ctx.closePath();
+	      ctx.fill();
+	      ctx.restore();
+	      return;
+	    }
+
+	    if (type === 'flat_triangle') {
+	      ctx.beginPath();
+	      ctx.moveTo(x - 9, y + 2.5);
+	      ctx.lineTo(x + 9, y + 2.5);
+	      ctx.lineTo(x, y - 2.8);
+	      ctx.closePath();
+	      ctx.fill();
+	      ctx.restore();
+	      return;
+	    }
+
+    ctx.lineWidth = 3.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - 9, y);
+    ctx.lineTo(x + 9, y);
+    ctx.stroke();
+    ctx.restore();
   }
 
   paintArrow(ctx, x0, y0, x1, y1, color) {
@@ -1892,6 +2403,67 @@ class DualViewRenderer {
     }
     const padded = Math.max(120, maxRange * 1.25);
     return Math.min(w, h) / (padded * 2);
+  }
+
+  scaleFromPlanetaryTrail(trail, w, h, bodyRadius, project, minimumRadiusPad) {
+    let maxRange = Number.isFinite(bodyRadius) && bodyRadius > 0 ? bodyRadius * (1 + minimumRadiusPad) : 1;
+    if (Array.isArray(trail) && trail.length > 0) {
+      for (let i = 0; i < trail.length; i += 1) {
+        const [dx, dy] = project(trail[i]);
+        const r = Math.hypot(dx, dy);
+        if (Number.isFinite(r)) {
+          maxRange = Math.max(maxRange, r * 1.04);
+        }
+      }
+    }
+    if (!Number.isFinite(maxRange) || maxRange <= 1) {
+      maxRange = 1;
+    }
+    return Math.min(w, h) / (maxRange * 2.2);
+  }
+
+  add3(a, b) {
+    return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+  }
+
+  sub3(a, b) {
+    return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+  }
+
+  scale3(v, s) {
+    return { x: v.x * s, y: v.y * s, z: v.z * s };
+  }
+
+  dot3(a, b) {
+    return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+  }
+
+  cross3(a, b) {
+    return {
+      x: (a.y * b.z) - (a.z * b.y),
+      y: (a.z * b.x) - (a.x * b.z),
+      z: (a.x * b.y) - (a.y * b.x)
+    };
+  }
+
+  norm3(v) {
+    return Math.hypot(v.x, v.y, v.z);
+  }
+
+  safeDirection(v, fallback) {
+    const n = this.norm3(v);
+    if (!Number.isFinite(n) || n <= 1e-9) {
+      return fallback;
+    }
+    return this.scale3(v, 1 / n);
+  }
+
+  crossFallback(up) {
+    let guess = this.cross3(up, { x: 0, y: 0, z: 1 });
+    if (this.norm3(guess) <= 1e-6) {
+      guess = this.cross3(up, { x: 0, y: 1, z: 0 });
+    }
+    return this.safeDirection(guess, { x: 1, y: 0, z: 0 });
   }
 
   lerp(a, b, t) {
@@ -2022,7 +2594,8 @@ function hydrateScenarioSelect(root) {
   if (preserve && Array.from(select.options).some((opt) => opt.value === preserve)) {
     select.value = preserve;
   } else if (select.options.length > 0) {
-    select.value = select.options[0].value;
+    const freePlay = Array.from(select.options).find((opt) => opt.value === 'free_play');
+    select.value = freePlay ? freePlay.value : select.options[0].value;
   }
 }
 
@@ -2031,10 +2604,32 @@ function selectedScenario(root) {
   if (selected) {
     return selected;
   }
+  if (state.scenarios.some((item) => item.name === 'free_play')) {
+    return 'free_play';
+  }
   if (state.scenarios.length > 0) {
     return state.scenarios[0].name;
   }
-  return 'free_fall';
+  return 'free_play';
+}
+
+function selectedShipType() {
+  const ship = String(state.refs?.shipType?.value || 'saucer').toLowerCase();
+  if (ship === 'sphere' || ship === 'egg' || ship === 'pyramid' || ship === 'flat_triangle') {
+    return ship;
+  }
+  if (ship === 'flat-triangle' || ship === 'flat triangle' || ship === 'triangle' || ship === 'delta') {
+    return 'flat_triangle';
+  }
+  return 'saucer';
+}
+
+function currentMapMode() {
+  const mode = String(state.refs?.mapMode?.value || state.game.mapMode || 'planetary').toLowerCase();
+  if (mode === 'local') {
+    return 'local';
+  }
+  return 'planetary';
 }
 
 function maybeInitLab() {
@@ -2073,11 +2668,14 @@ function maybeInitLab() {
   state.refs = {
     status: root.querySelector('[data-game-status]'),
     scenario: root.querySelector('[data-scenario-select]'),
+    shipType: root.querySelector('[data-ship-type]'),
+    mapMode: root.querySelector('[data-map-mode]'),
     speed: root.querySelector('[data-game-speed]'),
     startGround: root.querySelector('[data-game-start-ground]'),
     stickAmp: root.querySelector('[data-stick-amp]'),
     stickPhi: root.querySelector('[data-stick-phi]'),
     stickYaw: root.querySelector('[data-stick-yaw]'),
+    stickPitch: root.querySelector('[data-stick-pitch]'),
     holdAmpEnabled: root.querySelector('[data-hold-amp-enabled]'),
     holdAmpTarget: root.querySelector('[data-hold-amp-target]'),
     holdPhiEnabled: root.querySelector('[data-hold-phi-enabled]'),
@@ -2090,11 +2688,14 @@ function maybeInitLab() {
     pauseButton: root.querySelector('[data-game-pause]'),
     stats,
     canvasTop: root.querySelector('[data-game-canvas-top]'),
-    canvasSide: root.querySelector('[data-game-canvas-side]')
+    canvasSide: root.querySelector('[data-game-canvas-side]'),
+    canvas3D: root.querySelector('[data-game-canvas-3d]')
   };
 
-  state.renderer = new DualViewRenderer(state.refs.canvasTop, state.refs.canvasSide);
-  state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide);
+  state.game.mapMode = currentMapMode();
+
+  state.renderer = new DualViewRenderer(state.refs.canvasTop, state.refs.canvasSide, state.refs.canvas3D);
+  state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
 
   window.addEventListener('resize', () => {
     if (state.renderer) {
@@ -2158,6 +2759,16 @@ function wrapRadians(value) {
   return out;
 }
 
+function yawPitchFromVector(x, y, z) {
+  const horizontal = Math.hypot(x, y);
+  let yaw = 0;
+  if (horizontal > 1e-9) {
+    yaw = Math.atan2(y, x);
+  }
+  const pitch = Math.atan2(z, horizontal);
+  return { yaw, pitch };
+}
+
 function localVerticalMetrics(sample) {
   if (!sample || !sample.position || !sample.primary_position || !sample.g_raw || !sample.effective_g) {
     return null;
@@ -2205,6 +2816,9 @@ function centerSticks() {
   if (state.refs?.stickYaw) {
     state.refs.stickYaw.value = '0';
   }
+  if (state.refs?.stickPitch) {
+    state.refs.stickPitch.value = '0';
+  }
   setStatus('sticks centered');
 }
 
@@ -2231,14 +2845,14 @@ function applyAssistPreset(name) {
 
   switch (key) {
     case 'hover':
-      setInputNumber(state.refs.autoWeight, 1.0, 2);
+      setInputNumber(state.refs.autoWeight, 0.0, 2);
       setInputNumber(state.refs.autoVertical, 0.0, 2);
       setStatus('assist preset: hover');
       break;
     case 'neutral':
-      setInputNumber(state.refs.autoWeight, 0.0, 2);
+      setInputNumber(state.refs.autoWeight, 1.0, 2);
       setInputNumber(state.refs.autoVertical, 0.0, 2);
-      setStatus('assist preset: neutral');
+      setStatus('assist preset: normal-g');
       break;
     case 'ascend':
       setInputNumber(state.refs.autoWeight, -0.15, 2);
@@ -2263,6 +2877,8 @@ function updateHUD(sample) {
     for (const key of Object.keys(state.refs.stats)) {
       setStat(key, '-');
     }
+    setStat('map_mode', currentMapMode());
+    setStat('ship', selectedShipType());
     return;
   }
 
@@ -2275,6 +2891,8 @@ function updateHUD(sample) {
     ? `${sample.gravity_model || '-'} (coupler on)`
     : `${sample.gravity_model || '-'} (coupler off)`;
   setStat('model', modelLabel);
+  setStat('ship', String(sample.ship_type || 'saucer').toLowerCase());
+  setStat('map_mode', currentMapMode());
 
   const mass = Number.parseFloat(sample.craft_mass);
   const vertical = localVerticalMetrics(sample);
@@ -2309,32 +2927,62 @@ function updateHUD(sample) {
   setStat('amp_target', formatNumber(sample.control_amp_target, 3));
   setStat('theta_target', formatNumber(sample.control_theta_target, 3));
   setStat('axis_yaw', formatNumber(sample.control_axis_yaw, 3));
+  setStat('axis_pitch', formatNumber(sample.control_axis_pitch, 3));
+  setStat('warp_x', formatNumber(sample.control_warp_x, 3));
+  setStat('warp_y', formatNumber(sample.control_warp_y, 3));
+  setStat('warp_z', formatNumber(sample.control_warp_z, 3));
   setStat('lock_assist', sample.control_lock_assist ? 'on' : 'off');
   setStat('amp_axis', formatNumber(sample.control_amp_axis, 2));
   setStat('phi_axis', formatNumber(sample.control_phi_axis, 2));
   setStat('yaw_axis', formatNumber(sample.control_yaw_axis, 2));
+  setStat('pitch_axis', formatNumber(sample.control_pitch_axis, 2));
 
   const last = state.input.lastControl || {};
   setStat('control_mode', last.mode || 'manual');
   setStat('manual_amp', formatNumber(last.manualAmp, 2));
   setStat('manual_phi', formatNumber(last.manualPhi, 2));
   setStat('manual_yaw', formatNumber(last.manualYaw, 2));
+  setStat('manual_pitch', formatNumber(last.manualPitch, 2));
   setStat('auto_amp', formatNumber(last.autoAmp, 2));
   setStat('auto_phi', formatNumber(last.autoPhi, 2));
   setStat('auto_yaw', formatNumber(last.autoYaw, 2));
+  setStat('auto_pitch', formatNumber(last.autoPitch, 2));
 }
 
 function pushTrail(sample) {
   if (!sample || !sample.position) {
     return;
   }
+  const rx = Number.isFinite(sample.position?.x) && Number.isFinite(sample.primary_position?.x)
+    ? (sample.position.x - sample.primary_position.x)
+    : 0;
+  const ry = Number.isFinite(sample.position?.y) && Number.isFinite(sample.primary_position?.y)
+    ? (sample.position.y - sample.primary_position.y)
+    : 0;
+  const rz = Number.isFinite(sample.position?.z) && Number.isFinite(sample.primary_position?.z)
+    ? (sample.position.z - sample.primary_position.z)
+    : 0;
   state.game.trailTop.push({
     x: sample.position.x,
-    y: sample.position.y
+    y: sample.position.y,
+    rx,
+    ry
   });
   state.game.trailSide.push({
     x: sample.position.x,
-    alt: sample.altitude
+    z: sample.position.z,
+    alt: sample.altitude,
+    rx,
+    rz
+  });
+  state.game.trail3D.push({
+    x: sample.position.x,
+    y: sample.position.y,
+    z: sample.position.z,
+    alt: sample.altitude,
+    rx,
+    ry,
+    rz
   });
 
   while (state.game.trailTop.length > state.game.maxTrail) {
@@ -2343,11 +2991,15 @@ function pushTrail(sample) {
   while (state.game.trailSide.length > state.game.maxTrail) {
     state.game.trailSide.shift();
   }
+  while (state.game.trail3D.length > state.game.maxTrail) {
+    state.game.trail3D.shift();
+  }
 }
 
 function clearTrails() {
   state.game.trailTop = [];
   state.game.trailSide = [];
+  state.game.trail3D = [];
 }
 
 async function apiPost(path, payload) {
@@ -2467,11 +3119,13 @@ async function startGameSession() {
   await stopGameSession(true);
 
   const scenario = selectedScenario(root);
+  const shipType = selectedShipType();
+  state.game.mapMode = currentMapMode();
   setStatus(`starting ${scenario}...`);
   const startOnGround = Boolean(state.refs?.startGround?.checked);
 
   try {
-    const payload = await apiPost('/api/game/start', { scenario, start_on_ground: startOnGround });
+    const payload = await apiPost('/api/game/start', { scenario, start_on_ground: startOnGround, ship_type: shipType });
     state.game.sessionId = payload.session_id || '';
     state.game.dt = Number.parseFloat(payload.dt) || Number.parseFloat(payload?.state?.dt) || (1 / 120);
     state.game.running = true;
@@ -2488,19 +3142,22 @@ async function startGameSession() {
       manualAmp: 0,
       manualPhi: 0,
       manualYaw: 0,
+      manualPitch: 0,
       autoAmp: 0,
       autoPhi: 0,
       autoYaw: 0,
+      autoPitch: 0,
       finalAmp: 0,
       finalPhi: 0,
-      finalYaw: 0
+      finalYaw: 0,
+      finalPitch: 0
     };
     if (state.refs?.pauseButton) {
       state.refs.pauseButton.textContent = 'Pause';
     }
     updateHUD(state.game.latest);
     if (state.renderer) {
-      state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide);
+      state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
     }
     const mode = String(state.game.latest?.gravity_model || '').toLowerCase();
     const couplerEnabled = Boolean(state.game.latest?.coupler_enabled);
@@ -2509,7 +3166,7 @@ async function startGameSession() {
     } else if (mode && mode !== 'coupling') {
       setStatus(`running ${scenario} • ${mode} model • coupler controls are telemetry-only here`);
     } else {
-      setStatus(`running ${scenario} • dt=${state.game.dt.toFixed(4)} s • ${startOnGround ? 'ground start' : 'scenario start'}`);
+      setStatus(`running ${scenario} • ship=${shipType} • map=${state.game.mapMode} • dt=${state.game.dt.toFixed(4)} s • ${startOnGround ? 'ground start' : 'scenario start'}`);
     }
     if (!state.game.rafId) {
       state.game.rafId = window.requestAnimationFrame(gameLoop);
@@ -2570,17 +3227,21 @@ function currentControlPayload(sample = state.game.latest) {
   const keyAmp = (keys.d ? 1 : 0) + (keys.a ? -1 : 0);
   const keyPhi = (keys.w ? 1 : 0) + (keys.s ? -1 : 0);
   const keyYaw = (keys.e ? 1 : 0) + (keys.q ? -1 : 0);
+  const keyPitch = (keys.i ? 1 : 0) + (keys.k ? -1 : 0);
   const stickAmp = clampUnit(readNumberInput(state.refs?.stickAmp, 0));
   const stickPhi = clampUnit(readNumberInput(state.refs?.stickPhi, 0));
   const stickYaw = clampUnit(readNumberInput(state.refs?.stickYaw, 0));
+  const stickPitch = clampUnit(readNumberInput(state.refs?.stickPitch, 0));
 
   const manualAmp = clampUnit(keyAmp + stickAmp);
   const manualPhi = clampUnit(keyPhi + stickPhi);
   const manualYaw = clampUnit(keyYaw + stickYaw);
+  const manualPitch = clampUnit(keyPitch + stickPitch);
 
   let autoAmp = 0;
   let autoPhi = 0;
   let autoYaw = 0;
+  let autoPitch = 0;
   let mode = 'manual';
 
   const couplerEnabled = Boolean(sample?.coupler_enabled);
@@ -2631,30 +3292,59 @@ function currentControlPayload(sample = state.game.latest) {
 
     autoPhi += clampUnit((weightErr * 0.9) + (verticalErr * 0.04));
     autoAmp += clampUnit(lockErr * 1.1);
+
+    const px = Number.parseFloat(sample?.position?.x);
+    const py = Number.parseFloat(sample?.position?.y);
+    const pz = Number.parseFloat(sample?.position?.z);
+    const gx = Number.parseFloat(sample?.primary_position?.x);
+    const gy = Number.parseFloat(sample?.primary_position?.y);
+    const gz = Number.parseFloat(sample?.primary_position?.z);
+    const yawCurrent = Number.parseFloat(sample?.control_axis_yaw);
+    const pitchCurrent = Number.parseFloat(sample?.control_axis_pitch);
+    if (
+      Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(pz) &&
+      Number.isFinite(gx) && Number.isFinite(gy) && Number.isFinite(gz) &&
+      Number.isFinite(yawCurrent) && Number.isFinite(pitchCurrent)
+    ) {
+      const upX = px - gx;
+      const upY = py - gy;
+      const upZ = pz - gz;
+      const upNorm = Math.hypot(upX, upY, upZ);
+      if (upNorm > 1e-9) {
+        const desired = yawPitchFromVector(upX / upNorm, upY / upNorm, upZ / upNorm);
+        autoYaw += clampUnit(wrapRadians(desired.yaw - yawCurrent) / 0.9) * 0.45;
+        autoPitch += clampUnit((desired.pitch - pitchCurrent) / 0.65) * 0.55;
+      }
+    }
     mode = 'assist-ship';
   }
 
   const ampAxis = clampUnit(manualAmp + autoAmp);
   const phiAxis = clampUnit(manualPhi + autoPhi);
   const yawAxis = clampUnit(manualYaw + autoYaw);
+  const pitchAxis = clampUnit(manualPitch + autoPitch);
 
   state.input.lastControl = {
     mode,
     manualAmp,
     manualPhi,
     manualYaw,
+    manualPitch,
     autoAmp,
     autoPhi,
     autoYaw,
+    autoPitch,
     finalAmp: ampAxis,
     finalPhi: phiAxis,
-    finalYaw: yawAxis
+    finalYaw: yawAxis,
+    finalPitch: pitchAxis
   };
 
   return {
     amp_axis: ampAxis,
     phi_axis: phiAxis,
     yaw_axis: yawAxis,
+    pitch_axis: pitchAxis,
     lock_assist: state.input.lockAssist
   };
 }
@@ -2715,7 +3405,7 @@ function gameLoop(ts) {
   }
 
   if (state.renderer) {
-    state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide);
+    state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
   }
   state.game.rafId = window.requestAnimationFrame(gameLoop);
 }
@@ -2815,7 +3505,7 @@ function setupEvents() {
       }
       return;
     }
-    if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === 'q' || key === 'e') {
+    if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === 'q' || key === 'e' || key === 'i' || key === 'k') {
       event.preventDefault();
       state.input.keys[key] = true;
     }
@@ -2823,9 +3513,27 @@ function setupEvents() {
 
   document.addEventListener('keyup', (event) => {
     const key = (event.key || '').toLowerCase();
-    if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === 'q' || key === 'e') {
+    if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === 'q' || key === 'e' || key === 'i' || key === 'k') {
       event.preventDefault();
       state.input.keys[key] = false;
+    }
+  }, true);
+
+  document.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.matches('[data-map-mode]')) {
+      state.game.mapMode = currentMapMode();
+      updateHUD(state.game.latest);
+      if (state.renderer) {
+        state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
+      }
+      return;
+    }
+    if (target.matches('[data-ship-type]')) {
+      updateHUD(state.game.latest);
     }
   }, true);
 

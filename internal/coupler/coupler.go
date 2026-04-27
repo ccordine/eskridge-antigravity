@@ -8,7 +8,9 @@ import (
 )
 
 type Command struct {
-	Amplitude   float64
+	Amplitude float64
+	// ThetaTarget is a commanded coupling-phase bias (not PLL lock phase target).
+	// This lets gameplay/controller steer coupling polarity without forcing PLL detune.
 	ThetaTarget float64
 	OmegaBase   float64
 }
@@ -175,7 +177,9 @@ func (s *State) Update(dt float64) {
 	s.Z = expStep*s.Z + complex(s.Params.Beta, 0)*drive*driveGain
 
 	thetaR := cmplx.Phase(s.Z)
-	s.PhaseError = mathx.WrapAngle(thetaR - s.ThetaDrive - s.ThetaTarget)
+	// PLL lock tracks resonator-drive phase coherence only.
+	// Coupling phase steering is handled separately via ThetaTarget in recomputeDerived.
+	s.PhaseError = mathx.WrapAngle(thetaR - s.ThetaDrive)
 	s.EInt += s.PhaseError * dt
 	s.EInt = mathx.Clamp(s.EInt, -100, 100)
 	rawDelta := s.Params.PllKp*s.PhaseError + s.Params.PllKi*s.EInt
@@ -240,7 +244,7 @@ func (s *State) updateLockQuality(dt float64) {
 func (s *State) recomputeDerived() {
 	mag := cmplx.Abs(s.Z)
 	s.K = mathx.Clamp(s.Params.Alpha*mag, 0, s.Params.KMax)
-	s.Phi = mathx.WrapAngle(cmplx.Phase(s.Z) - s.ThetaDrive + s.Params.PhiBias)
+	s.Phi = mathx.WrapAngle(cmplx.Phase(s.Z) - s.ThetaDrive + s.Params.PhiBias + s.ThetaTarget)
 	cActive := ActiveCoupling(s.K, s.Phi)
 	s.C = s.Params.DefaultC + s.LockQuality*(cActive-s.Params.DefaultC)
 }

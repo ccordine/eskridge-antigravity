@@ -46,13 +46,13 @@ type pageData struct {
 }
 
 type scenarioInfo struct {
-	Name         string  `json:"name"`
-	Path         string  `json:"path"`
-	Dt           float64 `json:"dt"`
-	Duration     float64 `json:"duration"`
-	LogEvery     int     `json:"log_every"`
-	GravityModel string  `json:"gravity_model"`
-	CouplerEnabled bool  `json:"coupler_enabled"`
+	Name           string  `json:"name"`
+	Path           string  `json:"path"`
+	Dt             float64 `json:"dt"`
+	Duration       float64 `json:"duration"`
+	LogEvery       int     `json:"log_every"`
+	GravityModel   string  `json:"gravity_model"`
+	CouplerEnabled bool    `json:"coupler_enabled"`
 }
 
 type notesTreeNode struct {
@@ -462,8 +462,8 @@ func (s *paperServer) handleScenarios(w http.ResponseWriter, r *http.Request) {
 	infos := make([]scenarioInfo, 0, len(choices))
 	for _, choice := range choices {
 		info := scenarioInfo{
-			Name:     choice.Name,
-			Path:     choice.Path,
+			Name: choice.Name,
+			Path: choice.Path,
 		}
 		cfg, err := config.Load(choice.Path)
 		if err == nil {
@@ -773,6 +773,12 @@ func (s *paperServer) resolveScenario(arg string) (string, config.Scenario, erro
 
 	preferred := strings.TrimSpace(arg)
 	if preferred == "" {
+		for _, c := range choices {
+			if c.Name == "free_play" {
+				cfg, err := config.Load(c.Path)
+				return c.Path, cfg, err
+			}
+		}
 		for _, c := range choices {
 			if c.Name == "free_fall" {
 				cfg, err := config.Load(c.Path)

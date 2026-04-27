@@ -1,9 +1,9 @@
 <article id="paper-fragment" class="paper-prose" data-flight-lab-root>
   <h2>Flight Lab Game</h2>
-  <p>Playable fixed-step simulation lab. Inputs only drive coupler targets and lock behavior; craft motion remains fully physical.</p>
+  <p>Playable fixed-step simulation lab. Inputs only drive coupler targets and lock behavior; craft motion remains fully physical. The default scenario is <span class="font-mono">free_play</span> for manual PLL/coupler piloting with a saucer hull and EM warp-axis steering.</p>
 
   <div class="rounded-2xl border border-paper-edge/70 bg-white p-4">
-    <div class="grid gap-3 md:grid-cols-[1fr_120px_auto_auto_auto_auto] md:items-end">
+    <div class="grid gap-3 md:grid-cols-[1fr_120px_120px_120px_auto_auto_auto] md:items-end">
       <label class="block text-sm">
         <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Scenario</span>
         <select data-scenario-select class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm"></select>
@@ -12,6 +12,25 @@
       <label class="block text-sm">
         <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Sim Speed</span>
         <input data-game-speed type="number" min="0.25" max="8" step="0.25" value="1.0" class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm" />
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Ship Type</span>
+        <select data-ship-type class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm">
+          <option value="saucer">saucer</option>
+          <option value="sphere">sphere</option>
+          <option value="egg">egg</option>
+          <option value="pyramid">pyramid</option>
+          <option value="flat_triangle">flat_triangle</option>
+        </select>
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Map Mode</span>
+        <select data-map-mode class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm">
+          <option value="planetary">planetary</option>
+          <option value="local">local</option>
+        </select>
       </label>
 
       <label class="inline-flex h-[42px] items-center gap-2 rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-xs text-paper-ink/80">
@@ -36,13 +55,13 @@
     </div>
 
     <div class="mt-3 rounded-xl border border-paper-edge/70 bg-[#f7fbfc] p-3 text-xs leading-6 text-paper-ink/80">
-      <p class="font-display tracking-wide">Controls: keyboard <span class="font-mono">A/D</span> amp, <span class="font-mono">W/S</span> phase, <span class="font-mono">Q/E</span> yaw, <span class="font-mono">Space</span> lock assist, <span class="font-mono">R</span> reset. Sliders below provide direct axis input and hold targets.</p>
+      <p class="font-display tracking-wide">Controls: keyboard <span class="font-mono">A/D</span> amp, <span class="font-mono">W/S</span> phase, <span class="font-mono">Q/E</span> warp yaw, <span class="font-mono">I/K</span> warp pitch, <span class="font-mono">Space</span> lock assist, <span class="font-mono">R</span> reset.</p>
       <p class="mt-1 text-paper-ink/70">No direct physics overrides are used. UI commands only feed control inputs that the simulation integrates.</p>
     </div>
 
     <div class="mt-3 rounded-xl border border-paper-edge/70 bg-[#fffaf0] p-3">
-      <p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Pilot Sticks (Manual Bias)</p>
-      <div class="mt-2 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
+      <p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Pilot Sticks (Manual Bias + EM Warp Steering)</p>
+      <div class="mt-2 grid gap-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto] md:items-end">
         <label class="block text-sm">
           <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Amp Axis</span>
           <input data-stick-amp type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
@@ -54,6 +73,10 @@
         <label class="block text-sm">
           <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Yaw Axis</span>
           <input data-stick-yaw type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Pitch Axis</span>
+          <input data-stick-pitch type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
         </label>
         <button data-stick-center class="rounded-lg border border-paper-edge/80 bg-white px-4 py-2 font-display text-sm text-paper-ink transition hover:-translate-y-0.5">Center Sticks</button>
       </div>
@@ -96,13 +119,13 @@
       <p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Ship Assist (Outer Loop)</p>
       <div class="mt-2 grid gap-3 md:grid-cols-[auto_140px_140px_auto] md:items-end">
         <label class="inline-flex h-[42px] items-center gap-2 rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-xs text-paper-ink/80">
-          <input data-auto-trim type="checkbox" checked class="h-4 w-4 rounded border-paper-edge/80" />
+          <input data-auto-trim type="checkbox" class="h-4 w-4 rounded border-paper-edge/80" />
           <span class="font-display uppercase tracking-[0.12em]">Auto Trim Assist</span>
         </label>
 
         <label class="block text-sm">
           <span class="mb-1 block font-display text-xs uppercase tracking-[0.16em] text-paper-ink/70">Target Weight (xg)</span>
-          <input data-auto-weight type="number" min="-1.5" max="1.5" step="0.05" value="1.0" class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm" />
+          <input data-auto-weight type="number" min="-1.5" max="1.5" step="0.05" value="0.0" class="w-full rounded-lg border border-paper-edge/80 bg-[#fffcf5] px-3 py-2 text-sm" />
         </label>
 
         <label class="block text-sm">
@@ -112,7 +135,7 @@
 
         <div class="flex flex-wrap gap-2">
           <button data-assist-preset="hover" class="rounded-lg border border-paper-edge/80 bg-white px-3 py-2 font-display text-xs text-paper-ink transition hover:-translate-y-0.5">Hover</button>
-          <button data-assist-preset="neutral" class="rounded-lg border border-paper-edge/80 bg-white px-3 py-2 font-display text-xs text-paper-ink transition hover:-translate-y-0.5">Neutralize</button>
+          <button data-assist-preset="neutral" class="rounded-lg border border-paper-edge/80 bg-white px-3 py-2 font-display text-xs text-paper-ink transition hover:-translate-y-0.5">Normal g</button>
           <button data-assist-preset="ascend" class="rounded-lg border border-paper-edge/80 bg-white px-3 py-2 font-display text-xs text-paper-ink transition hover:-translate-y-0.5">Ascend</button>
           <button data-assist-preset="descend" class="rounded-lg border border-paper-edge/80 bg-white px-3 py-2 font-display text-xs text-paper-ink transition hover:-translate-y-0.5">Descend</button>
         </div>
@@ -120,14 +143,18 @@
     </div>
   </div>
 
-  <div class="mt-4 grid gap-3 xl:grid-cols-2">
+  <div class="mt-4 grid gap-3 xl:grid-cols-3">
     <section class="chart-panel">
       <p class="chart-title">Top-Down View (X/Y)</p>
       <canvas data-game-canvas-top class="flight-canvas"></canvas>
     </section>
     <section class="chart-panel">
-      <p class="chart-title">Profile View (X/Altitude)</p>
+      <p class="chart-title">Profile View (X/Altitude or X/Z Globe)</p>
       <canvas data-game-canvas-side class="flight-canvas"></canvas>
+    </section>
+    <section class="chart-panel">
+      <p class="chart-title">3D Flight View (Flat/Globe)</p>
+      <canvas data-game-canvas-3d class="flight-canvas"></canvas>
     </section>
   </div>
 
@@ -138,6 +165,8 @@
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Speed</p><p data-stat="speed" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Vertical V</p><p data-stat="vertical" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Model</p><p data-stat="model" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Ship</p><p data-stat="ship" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Map</p><p data-stat="map_mode" class="font-mono text-sm">-</p></div>
 
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Mass</p><p data-stat="mass" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Weight</p><p data-stat="weight_n" class="font-mono text-sm">-</p></div>
@@ -165,16 +194,23 @@
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Amp Target</p><p data-stat="amp_target" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Theta Target</p><p data-stat="theta_target" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Axis Yaw</p><p data-stat="axis_yaw" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Axis Pitch</p><p data-stat="axis_pitch" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Warp X</p><p data-stat="warp_x" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Warp Y</p><p data-stat="warp_y" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Warp Z</p><p data-stat="warp_z" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Lock Assist</p><p data-stat="lock_assist" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Amp Axis</p><p data-stat="amp_axis" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Phi Axis</p><p data-stat="phi_axis" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Yaw Axis</p><p data-stat="yaw_axis" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Pitch Axis</p><p data-stat="pitch_axis" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Control Mode</p><p data-stat="control_mode" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Manual Amp</p><p data-stat="manual_amp" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Manual Phi</p><p data-stat="manual_phi" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Manual Yaw</p><p data-stat="manual_yaw" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Manual Pitch</p><p data-stat="manual_pitch" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Auto Amp Axis</p><p data-stat="auto_amp" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Auto Phi Axis</p><p data-stat="auto_phi" class="font-mono text-sm">-</p></div>
     <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Auto Yaw Axis</p><p data-stat="auto_yaw" class="font-mono text-sm">-</p></div>
+    <div class="stat-card"><p class="font-display text-xs uppercase tracking-[0.16em] text-paper-ink/60">Auto Pitch Axis</p><p data-stat="auto_pitch" class="font-mono text-sm">-</p></div>
   </div>
 </article>

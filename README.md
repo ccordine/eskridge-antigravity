@@ -18,6 +18,7 @@ npm run build
 ## Run
 
 ```bash
+./acs run -config scenarios/free_play.json -out out/free_play.csv -meta out/free_play.meta.json
 ./acs run -config scenarios/free_fall.json -out out/free_fall.csv -meta out/free_fall.meta.json
 ./acs run -config scenarios/hover_attempt.json -out out/hover.csv
 ```
@@ -36,6 +37,7 @@ Highlights:
 - RecyclrJS fragment navigation (`/paper/*` sections)
 - Interactive Flight Lab game loop with fixed-step backend sessions (`/api/game/start`, `/api/game/step`, `/api/game/stop`)
 - Dual-canvas visualization (top-down + profile) with live HUD telemetry
+- Default lab scenario is `free_play` (when present), tuned for manual coupler piloting
 - Scenario metadata endpoint (`/api/scenarios`)
 - Scenario export endpoint (`/api/sim/export`)
 - Cascading file-based notes hub at `/notes` (Markdown docs from `notes/`)
@@ -125,6 +127,7 @@ Example:
 ## Scenario set
 
 - `scenarios/free_fall.json`
+- `scenarios/free_play.json`
 - `scenarios/hover_attempt.json`
 - `scenarios/climb.json`
 - `scenarios/lock_loss.json`
@@ -134,7 +137,7 @@ Example:
 
 ## CSV columns
 
-`step,time,pos_*,vel_*,altitude,vertical_vel,g_raw_*,g_eff_*,gravity_model,c,k,phi,phase_error,lock_quality,omega_drive,omega_0,drive_power,energy,yukawa_*,negmass_*,runaway_*,grav_power`
+`step,time,pos_*,vel_*,altitude,vertical_vel,g_raw_*,g_eff_*,gravity_model,ship_type,c,k,phi,phase_error,lock_quality,omega_drive,omega_0,drive_power,energy,yukawa_*,negmass_*,runaway_*,grav_power`
 
 ## Flight Lab Controls
 
@@ -143,7 +146,14 @@ In `/paper/lab`:
 - `A / D`: decrease/increase drive amplitude target
 - `W / S`: increase/decrease phase target
 - `Q / E`: rotate directional coupling axis yaw
+- `I / K`: increase/decrease directional coupling axis pitch
 - `Space`: toggle lock assist (PLL gains on/off)
 - `R`: reset active session
+
+The lab also exposes:
+
+- Ship type selector (`saucer`, `sphere`, `egg`, `pyramid`, `flat_triangle`) used at session start
+- Map mode selector (`planetary`, `local`) for Earth-centered vs local-follow camera behavior
+- A live HTML5 canvas 3D flight panel that renders either a flat-map scene (`local`) or globe scene (`planetary`)
 
 The lab uses fixed dt stepping server-side and applies player input only through coupler/control targets.

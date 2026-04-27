@@ -18,6 +18,7 @@ type DragModel struct {
 
 type Craft struct {
 	Mass            float64
+	ShipType        string
 	InertiaDiagonal mathx.Vec3
 	Position        mathx.Vec3
 	Velocity        mathx.Vec3
