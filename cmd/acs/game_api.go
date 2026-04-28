@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/cmplx"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -28,16 +29,16 @@ const (
 	gameCraftScaleMax      = 6.0
 	gameCraftLazarSpanM    = 15.8
 	gameDirectionalPerpMix = 0.22
-	gameWarpAmpMax         = 24.0
-	gameWarpKMax           = 6.0
+	gameWarpAmpMax         = 100000.0
+	gameWarpKMax           = 1000.0
 	gameWarpAmpRateMin     = 9.0
 	gameWarpThetaRateMin   = 10.0
-	gameOscOmegaMin        = 40.0
-	gameOscOmegaMax        = 160.0
-	gameOscQMin            = 5.0
-	gameOscQMax            = 240.0
-	gameOscBetaMin         = 0.2
-	gameOscBetaMax         = 4.0
+	gameOscOmegaMin        = 0.1
+	gameOscOmegaMax        = 1000000.0
+	gameOscQMin            = 0.01
+	gameOscQMax            = 1000000.0
+	gameOscBetaMin         = 0.0
+	gameOscBetaMax         = 1000000.0
 	gamePlasmaMin          = 0.0
 	gamePlasmaMax          = 1.0
 	gameYawAxisRate        = 3.6
@@ -45,6 +46,7 @@ const (
 	gameInitialAxisYaw     = 0.0
 	gameInitialAxisPitch   = 0.0
 	gameAttitudeAlignRate  = 3.2
+	gameInfiniteEnergyJ    = 1e18
 )
 
 type gamePlanetPreset struct {
@@ -54,6 +56,11 @@ type gamePlanetPreset struct {
 	AtmosphereEnabled bool
 	AtmosphereRho0    float64
 	AtmosphereScaleH  float64
+	AtmosphereT0      float64
+	AtmosphereLapse   float64
+	AtmosphereGamma   float64
+	AtmosphereR       float64
+	MagFieldTeslaEq   float64
 }
 
 var gamePlanetPresets = map[string]gamePlanetPreset{
@@ -64,6 +71,18 @@ var gamePlanetPresets = map[string]gamePlanetPreset{
 		AtmosphereEnabled: true,
 		AtmosphereRho0:    1.225,
 		AtmosphereScaleH:  8_500,
+		AtmosphereT0:      288.15,
+		AtmosphereLapse:   -0.0065,
+		AtmosphereGamma:   1.4,
+		AtmosphereR:       287.05,
+		MagFieldTeslaEq:   3.12e-5,
+	},
+	"mercury": {
+		Name:              "mercury",
+		Mass:              3.3011e23,
+		Radius:            2_439_700,
+		AtmosphereEnabled: false,
+		MagFieldTeslaEq:   3e-7,
 	},
 	"moon": {
 		Name:              "moon",
@@ -72,6 +91,7 @@ var gamePlanetPresets = map[string]gamePlanetPreset{
 		AtmosphereEnabled: false,
 		AtmosphereRho0:    0,
 		AtmosphereScaleH:  0,
+		MagFieldTeslaEq:   1e-9,
 	},
 	"mars": {
 		Name:              "mars",
@@ -80,6 +100,11 @@ var gamePlanetPresets = map[string]gamePlanetPreset{
 		AtmosphereEnabled: true,
 		AtmosphereRho0:    0.020,
 		AtmosphereScaleH:  11_100,
+		AtmosphereT0:      210.0,
+		AtmosphereLapse:   -0.0045,
+		AtmosphereGamma:   1.29,
+		AtmosphereR:       188.92,
+		MagFieldTeslaEq:   2.0e-7,
 	},
 	"venus": {
 		Name:              "venus",
@@ -88,6 +113,24 @@ var gamePlanetPresets = map[string]gamePlanetPreset{
 		AtmosphereEnabled: true,
 		AtmosphereRho0:    65.0,
 		AtmosphereScaleH:  15_900,
+		AtmosphereT0:      737.0,
+		AtmosphereLapse:   -0.0080,
+		AtmosphereGamma:   1.30,
+		AtmosphereR:       188.92,
+		MagFieldTeslaEq:   1.0e-8,
+	},
+	"titan": {
+		Name:              "titan",
+		Mass:              1.3452e23,
+		Radius:            2_574_730,
+		AtmosphereEnabled: true,
+		AtmosphereRho0:    5.30,
+		AtmosphereScaleH:  20_000,
+		AtmosphereT0:      94.0,
+		AtmosphereLapse:   -0.0010,
+		AtmosphereGamma:   1.40,
+		AtmosphereR:       296.8,
+		MagFieldTeslaEq:   3e-8,
 	},
 	"jupiter": {
 		Name:              "jupiter",
@@ -96,6 +139,24 @@ var gamePlanetPresets = map[string]gamePlanetPreset{
 		AtmosphereEnabled: true,
 		AtmosphereRho0:    0.16,
 		AtmosphereScaleH:  27_000,
+		AtmosphereT0:      165.0,
+		AtmosphereLapse:   -0.0020,
+		AtmosphereGamma:   1.40,
+		AtmosphereR:       3600.0,
+		MagFieldTeslaEq:   4.2e-4,
+	},
+	"neptune": {
+		Name:              "neptune",
+		Mass:              1.02413e26,
+		Radius:            24_622_000,
+		AtmosphereEnabled: true,
+		AtmosphereRho0:    0.45,
+		AtmosphereScaleH:  20_000,
+		AtmosphereT0:      72.0,
+		AtmosphereLapse:   -0.0010,
+		AtmosphereGamma:   1.40,
+		AtmosphereR:       3600.0,
+		MagFieldTeslaEq:   1.4e-5,
 	},
 }
 
@@ -109,15 +170,19 @@ type gameStartRequest struct {
 }
 
 type gameControlInput struct {
-	AmpAxis      float64 `json:"amp_axis"`
-	PhiAxis      float64 `json:"phi_axis"`
-	YawAxis      float64 `json:"yaw_axis"`
-	PitchAxis    float64 `json:"pitch_axis"`
-	OmegaTarget  float64 `json:"omega_target,omitempty"`
-	QTarget      float64 `json:"q_target,omitempty"`
-	BetaTarget   float64 `json:"beta_target,omitempty"`
-	PlasmaTarget float64 `json:"plasma_target,omitempty"`
-	LockAssist   *bool   `json:"lock_assist,omitempty"`
+	AmpAxis        float64 `json:"amp_axis"`
+	PhiAxis        float64 `json:"phi_axis"`
+	YawAxis        float64 `json:"yaw_axis"`
+	PitchAxis      float64 `json:"pitch_axis"`
+	OmegaTarget    float64 `json:"omega_target,omitempty"`
+	QTarget        float64 `json:"q_target,omitempty"`
+	BetaTarget     float64 `json:"beta_target,omitempty"`
+	PlasmaTarget   float64 `json:"plasma_target,omitempty"`
+	ThrottleTarget float64 `json:"throttle_target,omitempty"`
+	EMChargeTarget float64 `json:"em_charge_target,omitempty"`
+	EFieldTarget   float64 `json:"e_field_target,omitempty"`
+	BFieldTarget   float64 `json:"b_field_target,omitempty"`
+	LockAssist     *bool   `json:"lock_assist,omitempty"`
 }
 
 type gameStepRequest struct {
@@ -145,6 +210,21 @@ type gameStepResponse struct {
 
 type gameStopResponse struct {
 	Removed bool `json:"removed"`
+}
+
+type gameCalibrationItem struct {
+	Preset            string  `json:"preset"`
+	Mass              float64 `json:"mass"`
+	Radius            float64 `json:"radius"`
+	SurfaceG          float64 `json:"surface_g"`
+	AtmosphereEnabled bool    `json:"atmosphere_enabled"`
+	Rho0              float64 `json:"rho0"`
+	ScaleHeight       float64 `json:"scale_height"`
+	MagField          float64 `json:"mag_field_t"`
+}
+
+type gameCalibrationResponse struct {
+	Items []gameCalibrationItem `json:"items"`
 }
 
 type gameStepState struct {
@@ -188,6 +268,10 @@ type gameStepState struct {
 	AtmosphereEnabled bool       `json:"atmosphere_enabled"`
 	AtmosphereRho0    float64    `json:"atmosphere_rho0"`
 	AtmosphereScaleH  float64    `json:"atmosphere_scale_height"`
+	AtmosphereT0      float64    `json:"atmosphere_temperature0"`
+	AtmosphereLapse   float64    `json:"atmosphere_lapse_rate"`
+	AtmosphereGamma   float64    `json:"atmosphere_gamma"`
+	AtmosphereR       float64    `json:"atmosphere_gas_constant"`
 
 	CouplingC       float64 `json:"coupling_c"`
 	CouplingK       float64 `json:"coupling_k"`
@@ -213,6 +297,26 @@ type gameStepState struct {
 	DragCdEff       float64 `json:"drag_cd_eff"`
 	DragAreaRef     float64 `json:"drag_area_ref"`
 	PlasmaReduction float64 `json:"plasma_drag_reduction"`
+	LiftForceMag    float64 `json:"lift_force_mag"`
+	ThrustForceMag  float64 `json:"thrust_force_mag"`
+	EMForceMag      float64 `json:"em_force_mag"`
+	Mach            float64 `json:"mach"`
+	AoA             float64 `json:"aoa_rad"`
+	LiftCoeff       float64 `json:"lift_coeff"`
+	GLoad           float64 `json:"g_load"`
+	DynamicPressure float64 `json:"dynamic_pressure"`
+	HeatFlux        float64 `json:"heat_flux"`
+	SkinTempK       float64 `json:"skin_temp_k"`
+	StructOK        bool    `json:"struct_ok"`
+	PilotOK         bool    `json:"pilot_ok"`
+	WarningFlags    string  `json:"warning_flags"`
+	PilotStress     float64 `json:"pilot_stress"`
+	StructFatigue   float64 `json:"struct_fatigue"`
+	GAxisLong       float64 `json:"g_axis_long"`
+	GAxisLat        float64 `json:"g_axis_lat"`
+	GAxisVert       float64 `json:"g_axis_vert"`
+	RelGamma        float64 `json:"rel_gamma"`
+	RelBeta         float64 `json:"rel_beta"`
 
 	YukawaAlpha            float64 `json:"yukawa_alpha"`
 	YukawaLambda           float64 `json:"yukawa_lambda"`
@@ -228,57 +332,73 @@ type gameStepState struct {
 	RunawayFlag            bool    `json:"runaway_flag"`
 	RunawayExpectedUnderC2 bool    `json:"runaway_expected_c2"`
 
-	ControlAmpTarget    float64 `json:"control_amp_target"`
-	ControlThetaTarget  float64 `json:"control_theta_target"`
-	ControlOmegaTarget  float64 `json:"control_omega_target"`
-	ControlQTarget      float64 `json:"control_q_target"`
-	ControlBetaTarget   float64 `json:"control_beta_target"`
-	ControlPlasmaTarget float64 `json:"control_plasma_target"`
-	ControlAxisYaw      float64 `json:"control_axis_yaw"`
-	ControlAxisPitch    float64 `json:"control_axis_pitch"`
-	ControlWarpX        float64 `json:"control_warp_x"`
-	ControlWarpY        float64 `json:"control_warp_y"`
-	ControlWarpZ        float64 `json:"control_warp_z"`
-	ControlLockAssist   bool    `json:"control_lock_assist"`
-	ControlAmpAxis      float64 `json:"control_amp_axis"`
-	ControlPhiAxis      float64 `json:"control_phi_axis"`
-	ControlYawAxis      float64 `json:"control_yaw_axis"`
-	ControlPitchAxis    float64 `json:"control_pitch_axis"`
+	ControlAmpTarget      float64 `json:"control_amp_target"`
+	ControlThetaTarget    float64 `json:"control_theta_target"`
+	ControlOmegaTarget    float64 `json:"control_omega_target"`
+	ControlQTarget        float64 `json:"control_q_target"`
+	ControlBetaTarget     float64 `json:"control_beta_target"`
+	ControlPlasmaTarget   float64 `json:"control_plasma_target"`
+	ControlThrottleTarget float64 `json:"control_throttle_target"`
+	ControlEMChargeTarget float64 `json:"control_em_charge_target"`
+	ControlEFieldTarget   float64 `json:"control_e_field_target"`
+	ControlBFieldTarget   float64 `json:"control_b_field_target"`
+	ControlAxisYaw        float64 `json:"control_axis_yaw"`
+	ControlAxisPitch      float64 `json:"control_axis_pitch"`
+	ControlWarpX          float64 `json:"control_warp_x"`
+	ControlWarpY          float64 `json:"control_warp_y"`
+	ControlWarpZ          float64 `json:"control_warp_z"`
+	ControlLockAssist     bool    `json:"control_lock_assist"`
+	ControlAmpAxis        float64 `json:"control_amp_axis"`
+	ControlPhiAxis        float64 `json:"control_phi_axis"`
+	ControlYawAxis        float64 `json:"control_yaw_axis"`
+	ControlPitchAxis      float64 `json:"control_pitch_axis"`
 }
 
 type gameControlState struct {
-	AmpTarget    float64
-	ThetaTarget  float64
-	OmegaTarget  float64
-	QTarget      float64
-	BetaTarget   float64
-	PlasmaTarget float64
-	AxisYaw      float64
-	AxisPitch    float64
-	LockAssist   bool
-	AmpAxis      float64
-	PhiAxis      float64
-	YawAxis      float64
-	PitchAxis    float64
+	AmpTarget      float64
+	ThetaTarget    float64
+	OmegaTarget    float64
+	QTarget        float64
+	BetaTarget     float64
+	PlasmaTarget   float64
+	ThrottleTarget float64
+	EMChargeTarget float64
+	EFieldTarget   float64
+	BFieldTarget   float64
+	AxisYaw        float64
+	AxisPitch      float64
+	LockAssist     bool
+	AmpAxis        float64
+	PhiAxis        float64
+	YawAxis        float64
+	PitchAxis      float64
 }
 
 type gameControlLimits struct {
-	AmpAxisRate     float64
-	PhiAxisRate     float64
-	YawAxisRate     float64
-	PitchAxisRate   float64
-	MinThetaTarget  float64
-	MaxThetaTarget  float64
-	MinOmegaTarget  float64
-	MaxOmegaTarget  float64
-	MinQTarget      float64
-	MaxQTarget      float64
-	MinBetaTarget   float64
-	MaxBetaTarget   float64
-	MinPlasmaTarget float64
-	MaxPlasmaTarget float64
-	MinAxisPitch    float64
-	MaxAxisPitch    float64
+	AmpAxisRate       float64
+	PhiAxisRate       float64
+	YawAxisRate       float64
+	PitchAxisRate     float64
+	MinThetaTarget    float64
+	MaxThetaTarget    float64
+	MinOmegaTarget    float64
+	MaxOmegaTarget    float64
+	MinQTarget        float64
+	MaxQTarget        float64
+	MinBetaTarget     float64
+	MaxBetaTarget     float64
+	MinPlasmaTarget   float64
+	MaxPlasmaTarget   float64
+	MinThrottleTarget float64
+	MaxThrottleTarget float64
+	MinEMChargeTarget float64
+	MaxEMChargeTarget float64
+	MinEFieldTarget   float64
+	MaxEFieldTarget   float64
+	MinBFieldTarget   float64
+	MaxBFieldTarget   float64
+	MinAxisPitch      float64
+	MaxAxisPitch      float64
 }
 
 type gameGravityEval struct {
@@ -332,9 +452,12 @@ type gameSession struct {
 	negMassRunawayLimit float64
 	negMassOverrides    map[string]float64
 
-	controls   gameControlState
-	limits     gameControlLimits
-	craftScale float64
+	controls      gameControlState
+	limits        gameControlLimits
+	craftScale    float64
+	skinTempK     float64
+	pilotStress   float64
+	structFatigue float64
 }
 
 func (s *paperServer) handleGameStart(w http.ResponseWriter, r *http.Request) {
@@ -454,6 +577,38 @@ func (s *paperServer) handleGameStop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gameStopResponse{Removed: removed})
 }
 
+func (s *paperServer) handleGameCalibration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	const bigG = 6.67430e-11
+	keys := make([]string, 0, len(gamePlanetPresets))
+	for k := range gamePlanetPresets {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]gameCalibrationItem, 0, len(keys))
+	for _, k := range keys {
+		p := gamePlanetPresets[k]
+		g := 0.0
+		if p.Radius > 0 {
+			g = bigG * p.Mass / (p.Radius * p.Radius)
+		}
+		out = append(out, gameCalibrationItem{
+			Preset:            k,
+			Mass:              p.Mass,
+			Radius:            p.Radius,
+			SurfaceG:          g,
+			AtmosphereEnabled: p.AtmosphereEnabled,
+			Rho0:              p.AtmosphereRho0,
+			ScaleHeight:       p.AtmosphereScaleH,
+			MagField:          p.MagFieldTeslaEq,
+		})
+	}
+	writeJSON(w, http.StatusOK, gameCalibrationResponse{Items: out})
+}
+
 func (s *paperServer) pruneGameSessionsLocked(now time.Time) {
 	for id, sess := range s.gameSessions {
 		if now.Sub(sess.LastUpdated()) > gameSessionTTL {
@@ -525,14 +680,13 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 	couplerState := coupler.New(cfg.CouplerRuntime())
 	couplerEnabled := cfg.Coupler.Enabled && gravityModel == "coupling"
 	switch warpDrive {
-	case "standard":
+	case "resonant_pll", "geodesic", "inertial_gradient", "plasma_mhd", "alcubierre_ag":
 		gravityModel = "coupling"
 		couplerEnabled = true
-	case "off":
-		gravityModel = "coupling"
-		couplerEnabled = false
 	default:
-		warpDrive = warpDriveForScenario(cfg)
+		warpDrive = "resonant_pll"
+		gravityModel = "coupling"
+		couplerEnabled = true
 	}
 	if !couplerEnabled {
 		couplerState.C = 1.0
@@ -548,6 +702,9 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 	if couplerEnabled {
 		couplerState.Params.DirectionalEnabled = true
 		couplerState.Params.FieldAxisBody = mathx.Vec3{Z: 1}
+		couplerState.Params.PowerLimit = 0
+		couplerState.Params.EnergyInitial = gameInfiniteEnergyJ
+		couplerState.Energy = gameInfiniteEnergyJ
 		if couplerState.Params.MaxAmplitude < gameWarpAmpMax {
 			couplerState.Params.MaxAmplitude = gameWarpAmpMax
 		}
@@ -569,6 +726,7 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 			}
 			couplerState.Params.PerpFactor = couplerState.Params.ParallelFactor * gameDirectionalPerpMix
 		}
+		applyWarpDriveProfile(couplerState, warpDrive)
 	}
 
 	ampAxisRate := couplerState.Params.AmpRate
@@ -591,6 +749,10 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 	maxBetaTarget := gameOscBetaMax
 	minAxisPitch := -1.53
 	maxAxisPitch := 1.53
+	plasmaStart := mathx.Clamp(cfg.Craft.Drag.Plasma.Level, gamePlasmaMin, gamePlasmaMax)
+	if warpDrive == "plasma_mhd" && plasmaStart < 0.45 {
+		plasmaStart = 0.45
+	}
 
 	negMassConvention := strings.ToUpper(strings.TrimSpace(cfg.GravityModel.NegMass.Convention))
 	if negMassConvention != "C1" && negMassConvention != "C2" {
@@ -630,33 +792,45 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 		negMassRunawayLimit: negMassRunawayLimit,
 		negMassOverrides:    copyChargeOverrides(cfg.GravityModel.NegMass.QGOverrides),
 		controls: gameControlState{
-			AmpTarget:    couplerState.Cmd.Amplitude,
-			ThetaTarget:  couplerState.Cmd.ThetaTarget,
-			OmegaTarget:  mathx.Clamp(couplerState.Params.Omega0, minOmegaTarget, maxOmegaTarget),
-			QTarget:      mathx.Clamp(couplerState.Params.Q, minQTarget, maxQTarget),
-			BetaTarget:   mathx.Clamp(couplerState.Params.Beta, minBetaTarget, maxBetaTarget),
-			PlasmaTarget: mathx.Clamp(cfg.Craft.Drag.Plasma.Level, gamePlasmaMin, gamePlasmaMax),
-			AxisYaw:      axisYaw,
-			AxisPitch:    axisPitch,
-			LockAssist:   true,
+			AmpTarget:      couplerState.Cmd.Amplitude,
+			ThetaTarget:    couplerState.Cmd.ThetaTarget,
+			OmegaTarget:    mathx.Clamp(couplerState.Params.Omega0, minOmegaTarget, maxOmegaTarget),
+			QTarget:        mathx.Clamp(couplerState.Params.Q, minQTarget, maxQTarget),
+			BetaTarget:     mathx.Clamp(couplerState.Params.Beta, minBetaTarget, maxBetaTarget),
+			PlasmaTarget:   plasmaStart,
+			ThrottleTarget: 0.0,
+			EMChargeTarget: 0.0,
+			EFieldTarget:   0.0,
+			BFieldTarget:   0.0,
+			AxisYaw:        axisYaw,
+			AxisPitch:      axisPitch,
+			LockAssist:     true,
 		},
 		limits: gameControlLimits{
-			AmpAxisRate:     ampAxisRate,
-			PhiAxisRate:     phiAxisRate,
-			YawAxisRate:     yawAxisRate,
-			PitchAxisRate:   pitchAxisRate,
-			MinThetaTarget:  minThetaTarget,
-			MaxThetaTarget:  maxThetaTarget,
-			MinOmegaTarget:  minOmegaTarget,
-			MaxOmegaTarget:  maxOmegaTarget,
-			MinQTarget:      minQTarget,
-			MaxQTarget:      maxQTarget,
-			MinBetaTarget:   minBetaTarget,
-			MaxBetaTarget:   maxBetaTarget,
-			MinPlasmaTarget: gamePlasmaMin,
-			MaxPlasmaTarget: gamePlasmaMax,
-			MinAxisPitch:    minAxisPitch,
-			MaxAxisPitch:    maxAxisPitch,
+			AmpAxisRate:       ampAxisRate,
+			PhiAxisRate:       phiAxisRate,
+			YawAxisRate:       yawAxisRate,
+			PitchAxisRate:     pitchAxisRate,
+			MinThetaTarget:    minThetaTarget,
+			MaxThetaTarget:    maxThetaTarget,
+			MinOmegaTarget:    minOmegaTarget,
+			MaxOmegaTarget:    maxOmegaTarget,
+			MinQTarget:        minQTarget,
+			MaxQTarget:        maxQTarget,
+			MinBetaTarget:     minBetaTarget,
+			MaxBetaTarget:     maxBetaTarget,
+			MinPlasmaTarget:   gamePlasmaMin,
+			MaxPlasmaTarget:   gamePlasmaMax,
+			MinThrottleTarget: -1.0,
+			MaxThrottleTarget: 1.0,
+			MinEMChargeTarget: -20000.0,
+			MaxEMChargeTarget: 20000.0,
+			MinEFieldTarget:   -100000.0,
+			MaxEFieldTarget:   100000.0,
+			MinBFieldTarget:   -5.0,
+			MaxBFieldTarget:   5.0,
+			MinAxisPitch:      minAxisPitch,
+			MaxAxisPitch:      maxAxisPitch,
 		},
 		craftScale: gameCraftScaleMin,
 	}
@@ -666,6 +840,13 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 	}
 	applyCraftScaleToSession(session, craftScaleOverride)
 	ensureGameAerodynamics(session)
+	applyWarpDriveControlProfile(session, warpDrive)
+	session.skinTempK = session.craft.Thermal.InitialSkinTempK
+	if session.skinTempK <= 0 {
+		session.skinTempK = 295
+	}
+	session.pilotStress = 0
+	session.structFatigue = 0
 
 	session.controls.AmpTarget = mathx.Clamp(session.controls.AmpTarget, couplerState.Params.MinAmplitude, couplerState.Params.MaxAmplitude)
 	session.controls.ThetaTarget = mathx.Clamp(session.controls.ThetaTarget, session.limits.MinThetaTarget, session.limits.MaxThetaTarget)
@@ -673,6 +854,10 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 	session.controls.QTarget = mathx.Clamp(session.controls.QTarget, session.limits.MinQTarget, session.limits.MaxQTarget)
 	session.controls.BetaTarget = mathx.Clamp(session.controls.BetaTarget, session.limits.MinBetaTarget, session.limits.MaxBetaTarget)
 	session.controls.PlasmaTarget = mathx.Clamp(session.controls.PlasmaTarget, session.limits.MinPlasmaTarget, session.limits.MaxPlasmaTarget)
+	session.controls.ThrottleTarget = mathx.Clamp(session.controls.ThrottleTarget, session.limits.MinThrottleTarget, session.limits.MaxThrottleTarget)
+	session.controls.EMChargeTarget = mathx.Clamp(session.controls.EMChargeTarget, session.limits.MinEMChargeTarget, session.limits.MaxEMChargeTarget)
+	session.controls.EFieldTarget = mathx.Clamp(session.controls.EFieldTarget, session.limits.MinEFieldTarget, session.limits.MaxEFieldTarget)
+	session.controls.BFieldTarget = mathx.Clamp(session.controls.BFieldTarget, session.limits.MinBFieldTarget, session.limits.MaxBFieldTarget)
 	session.controls.AxisPitch = mathx.Clamp(session.controls.AxisPitch, session.limits.MinAxisPitch, session.limits.MaxAxisPitch)
 	session.snapCraftAttitudeLocked()
 	if startOnGround && session.env.Ground.Enabled {
@@ -685,14 +870,22 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 
 func normalizedWarpDriveSelection(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", "scenario", "scenario_default", "default":
-		return "scenario_default"
-	case "standard", "pll", "coupling":
-		return "standard"
-	case "off", "none", "disabled", "gravity":
-		return "off"
+	case "", "standard", "pll", "coupling", "pll_standard", "resonant_pll":
+		return "resonant_pll"
+	case "high_q_resonant", "high_q", "highq", "resonant":
+		return "resonant_pll"
+	case "inertial_vector", "vector", "inertial_gradient":
+		return "inertial_gradient"
+	case "plasma_sheath", "plasmasheath", "sheath", "plasma_mhd":
+		return "plasma_mhd"
+	case "alcubierre", "alcubierre_ag", "alcubierre-inspired", "alcubierre_inspired", "ag_bubble":
+		return "alcubierre_ag"
+	case "geodesic":
+		return "geodesic"
+	case "scenario", "scenario_default", "default":
+		return "resonant_pll"
 	default:
-		return "scenario_default"
+		return "resonant_pll"
 	}
 }
 
@@ -701,10 +894,98 @@ func warpDriveForScenario(cfg config.Scenario) string {
 	if gravityModel == "" {
 		gravityModel = "coupling"
 	}
-	if cfg.Coupler.Enabled && gravityModel == "coupling" {
-		return "standard"
+	return "resonant_pll"
+}
+
+func applyWarpDriveProfile(cs *coupler.State, warpDrive string) {
+	if cs == nil {
+		return
 	}
-	return "scenario_default"
+	switch strings.ToLower(strings.TrimSpace(warpDrive)) {
+	case "geodesic":
+		cs.Params.ParallelFactor = 2.4
+		cs.Params.PerpFactor = 0.2
+		cs.Params.KMax = math.Max(cs.Params.KMax, 220.0)
+		cs.Params.ThetaRate = math.Max(cs.Params.ThetaRate, 12.5)
+		cs.Params.AmpRate = math.Max(cs.Params.AmpRate, 10.5)
+	case "inertial_gradient":
+		cs.Params.ParallelFactor = 3.0
+		cs.Params.PerpFactor = 0.05
+		cs.Params.KMax = math.Max(cs.Params.KMax, 320.0)
+		cs.Params.ThetaRate = math.Max(cs.Params.ThetaRate, 15.0)
+		cs.Params.AmpRate = math.Max(cs.Params.AmpRate, 12.0)
+	case "plasma_mhd":
+		cs.Params.ParallelFactor = 2.0
+		cs.Params.PerpFactor = 0.15
+		cs.Params.KMax = math.Max(cs.Params.KMax, 180.0)
+		cs.Params.ThetaRate = math.Max(cs.Params.ThetaRate, 11.5)
+		cs.Params.AmpRate = math.Max(cs.Params.AmpRate, 10.0)
+	case "alcubierre_ag":
+		cs.Params.ParallelFactor = 3.6
+		cs.Params.PerpFactor = 0.03
+		cs.Params.KMax = math.Max(cs.Params.KMax, 520.0)
+		cs.Params.ThetaRate = math.Max(cs.Params.ThetaRate, 18.0)
+		cs.Params.AmpRate = math.Max(cs.Params.AmpRate, 14.0)
+	default: // resonant_pll
+		cs.Params.ParallelFactor = 1.8
+		cs.Params.PerpFactor = 0.25
+		cs.Params.KMax = math.Max(cs.Params.KMax, 140.0)
+		cs.Params.ThetaRate = math.Max(cs.Params.ThetaRate, 11.0)
+		cs.Params.AmpRate = math.Max(cs.Params.AmpRate, 10.0)
+	}
+}
+
+func applyWarpDriveControlProfile(session *gameSession, warpDrive string) {
+	if session == nil {
+		return
+	}
+	// Global neutral defaults.
+	session.controls.ThrottleTarget = 0
+	session.controls.EMChargeTarget = 0
+	session.controls.EFieldTarget = 0
+	session.controls.BFieldTarget = 0
+
+	switch strings.ToLower(strings.TrimSpace(warpDrive)) {
+	case "geodesic":
+		session.controls.QTarget = mathx.Clamp(math.Max(session.controls.QTarget, 220), session.limits.MinQTarget, session.limits.MaxQTarget)
+		session.controls.BetaTarget = mathx.Clamp(math.Max(session.controls.BetaTarget, 2.2), session.limits.MinBetaTarget, session.limits.MaxBetaTarget)
+		session.controls.PlasmaTarget = mathx.Clamp(math.Max(session.controls.PlasmaTarget, 0.08), session.limits.MinPlasmaTarget, session.limits.MaxPlasmaTarget)
+		session.controls.ThrottleTarget = 0.18
+		session.controls.EFieldTarget = 1200
+	case "inertial_gradient":
+		session.controls.QTarget = mathx.Clamp(math.Max(session.controls.QTarget, 320), session.limits.MinQTarget, session.limits.MaxQTarget)
+		session.controls.BetaTarget = mathx.Clamp(math.Max(session.controls.BetaTarget, 3.1), session.limits.MinBetaTarget, session.limits.MaxBetaTarget)
+		session.controls.PlasmaTarget = mathx.Clamp(math.Max(session.controls.PlasmaTarget, 0.15), session.limits.MinPlasmaTarget, session.limits.MaxPlasmaTarget)
+		session.controls.ThrottleTarget = 0.26
+		session.controls.EFieldTarget = 2200
+		session.controls.BFieldTarget = 0.08
+	case "plasma_mhd":
+		session.controls.QTarget = mathx.Clamp(math.Max(session.controls.QTarget, 180), session.limits.MinQTarget, session.limits.MaxQTarget)
+		session.controls.BetaTarget = mathx.Clamp(math.Max(session.controls.BetaTarget, 2.6), session.limits.MinBetaTarget, session.limits.MaxBetaTarget)
+		session.controls.PlasmaTarget = mathx.Clamp(math.Max(session.controls.PlasmaTarget, 0.72), session.limits.MinPlasmaTarget, session.limits.MaxPlasmaTarget)
+		session.controls.ThrottleTarget = 0.20
+		session.controls.EMChargeTarget = 600
+		session.controls.EFieldTarget = 1800
+		session.controls.BFieldTarget = 0.12
+	case "alcubierre_ag":
+		session.controls.QTarget = mathx.Clamp(math.Max(session.controls.QTarget, 420), session.limits.MinQTarget, session.limits.MaxQTarget)
+		session.controls.BetaTarget = mathx.Clamp(math.Max(session.controls.BetaTarget, 4.2), session.limits.MinBetaTarget, session.limits.MaxBetaTarget)
+		session.controls.PlasmaTarget = mathx.Clamp(math.Max(session.controls.PlasmaTarget, 0.10), session.limits.MinPlasmaTarget, session.limits.MaxPlasmaTarget)
+		session.controls.ThrottleTarget = 0.34
+		session.controls.EMChargeTarget = 1800
+		session.controls.EFieldTarget = 4200
+		session.controls.BFieldTarget = 0.22
+	default: // resonant_pll
+		session.controls.QTarget = mathx.Clamp(math.Max(session.controls.QTarget, 120), session.limits.MinQTarget, session.limits.MaxQTarget)
+		session.controls.BetaTarget = mathx.Clamp(math.Max(session.controls.BetaTarget, 1.8), session.limits.MinBetaTarget, session.limits.MaxBetaTarget)
+		session.controls.PlasmaTarget = mathx.Clamp(math.Max(session.controls.PlasmaTarget, 0.05), session.limits.MinPlasmaTarget, session.limits.MaxPlasmaTarget)
+		session.controls.ThrottleTarget = 0.12
+		session.controls.EFieldTarget = 900
+	}
+	session.controls.ThrottleTarget = mathx.Clamp(session.controls.ThrottleTarget, session.limits.MinThrottleTarget, session.limits.MaxThrottleTarget)
+	session.controls.EMChargeTarget = mathx.Clamp(session.controls.EMChargeTarget, session.limits.MinEMChargeTarget, session.limits.MaxEMChargeTarget)
+	session.controls.EFieldTarget = mathx.Clamp(session.controls.EFieldTarget, session.limits.MinEFieldTarget, session.limits.MaxEFieldTarget)
+	session.controls.BFieldTarget = mathx.Clamp(session.controls.BFieldTarget, session.limits.MinBFieldTarget, session.limits.MaxBFieldTarget)
 }
 
 func applyPlanetPresetToSession(session *gameSession, presetRaw string) {
@@ -749,7 +1030,55 @@ func applyPlanetPresetToSession(session *gameSession, presetRaw string) {
 	session.env.Atmosphere.Enabled = preset.AtmosphereEnabled
 	session.env.Atmosphere.Rho0 = preset.AtmosphereRho0
 	session.env.Atmosphere.ScaleHeight = preset.AtmosphereScaleH
+	session.env.Atmosphere.Temperature0 = preset.AtmosphereT0
+	session.env.Atmosphere.LapseRate = preset.AtmosphereLapse
+	session.env.Atmosphere.Gamma = preset.AtmosphereGamma
+	session.env.Atmosphere.GasConstant = preset.AtmosphereR
+	session.env.Atmosphere.Layers = defaultAtmosphereLayersForPreset(preset)
+	session.env.BField = mathx.Vec3{Y: preset.MagFieldTeslaEq}
 	session.craft.Position = session.bodies[idx].Position.Add(dir.Scale(preset.Radius + altitude))
+}
+
+func defaultAtmosphereLayersForPreset(p gamePlanetPreset) []physics.AtmosphereLayer {
+	if !p.AtmosphereEnabled || p.AtmosphereScaleH <= 0 || p.AtmosphereRho0 <= 0 {
+		return nil
+	}
+	midAlt := math.Max(1000, p.AtmosphereScaleH*1.8)
+	topAlt := math.Max(midAlt+2000, p.AtmosphereScaleH*5.5)
+	rho1 := p.AtmosphereRho0 * 0.18
+	rho2 := p.AtmosphereRho0 * 0.015
+	return []physics.AtmosphereLayer{
+		{
+			MinAlt:       0,
+			MaxAlt:       midAlt,
+			Rho0:         p.AtmosphereRho0,
+			ScaleHeight:  p.AtmosphereScaleH,
+			Temperature0: p.AtmosphereT0,
+			LapseRate:    p.AtmosphereLapse,
+			Gamma:        p.AtmosphereGamma,
+			GasConstant:  p.AtmosphereR,
+		},
+		{
+			MinAlt:       midAlt,
+			MaxAlt:       topAlt,
+			Rho0:         rho1,
+			ScaleHeight:  p.AtmosphereScaleH * 0.9,
+			Temperature0: p.AtmosphereT0 + p.AtmosphereLapse*midAlt,
+			LapseRate:    p.AtmosphereLapse * 0.6,
+			Gamma:        p.AtmosphereGamma,
+			GasConstant:  p.AtmosphereR,
+		},
+		{
+			MinAlt:       topAlt,
+			MaxAlt:       1e9,
+			Rho0:         rho2,
+			ScaleHeight:  p.AtmosphereScaleH * 1.3,
+			Temperature0: p.AtmosphereT0 + p.AtmosphereLapse*topAlt,
+			LapseRate:    p.AtmosphereLapse * 0.2,
+			Gamma:        p.AtmosphereGamma,
+			GasConstant:  p.AtmosphereR,
+		},
+	}
 }
 
 func applyCraftScaleToSession(session *gameSession, scaleRaw float64) {
@@ -783,9 +1112,13 @@ func ensureGameAerodynamics(session *gameSession) {
 	if session.env.Atmosphere.Enabled {
 		session.craft.Drag.Enabled = true
 		session.craft.Drag.Plasma.Enabled = true
+		session.craft.Aero.Enabled = true
+	} else {
+		session.craft.Drag.Plasma.Enabled = false
+		session.craft.Aero.Enabled = false
 	}
 	if session.craft.Drag.Plasma.MaxDragReduction <= 0 {
-		session.craft.Drag.Plasma.MaxDragReduction = 0.18
+		session.craft.Drag.Plasma.MaxDragReduction = 0.995
 	}
 	if session.craft.Drag.Plasma.AuthoritySpeed <= 0 {
 		session.craft.Drag.Plasma.AuthoritySpeed = 28.0
@@ -796,7 +1129,76 @@ func ensureGameAerodynamics(session *gameSession) {
 	if session.craft.Drag.Plasma.PowerPerArea <= 0 {
 		session.craft.Drag.Plasma.PowerPerArea = 320.0
 	}
+	if strings.EqualFold(session.warpDrive, "plasma_mhd") && session.craft.Drag.Plasma.Level < 1.0 {
+		session.craft.Drag.Plasma.Level = 1.0
+	}
 	session.craft.Drag.Plasma.Level = mathx.Clamp(session.craft.Drag.Plasma.Level, gamePlasmaMin, gamePlasmaMax)
+	if session.craft.Aero.ClAlpha == 0 {
+		session.craft.Aero.ClAlpha = 5.4
+	}
+	if session.craft.Aero.ClMax == 0 {
+		session.craft.Aero.ClMax = 1.35
+	}
+	if session.craft.Aero.StallAoA == 0 {
+		session.craft.Aero.StallAoA = 0.35
+	}
+	if session.env.Atmosphere.Temperature0 <= 0 {
+		session.env.Atmosphere.Temperature0 = 288.15
+	}
+	if session.env.Atmosphere.LapseRate == 0 {
+		session.env.Atmosphere.LapseRate = -0.0065
+	}
+	if session.env.Atmosphere.Gamma <= 0 {
+		session.env.Atmosphere.Gamma = 1.4
+	}
+	if session.env.Atmosphere.GasConstant <= 0 {
+		session.env.Atmosphere.GasConstant = 287.05
+	}
+	session.craft.Thermal.Enabled = true
+	if session.craft.Thermal.HeatTransferCoeff <= 0 {
+		session.craft.Thermal.HeatTransferCoeff = 7.5e-4
+	}
+	if session.craft.Thermal.RadiativeCoeff <= 0 {
+		session.craft.Thermal.RadiativeCoeff = 1.2e-8
+	}
+	if session.craft.Thermal.Emissivity <= 0 {
+		session.craft.Thermal.Emissivity = 0.85
+	}
+	if session.craft.Thermal.InitialSkinTempK <= 0 {
+		session.craft.Thermal.InitialSkinTempK = 295
+	}
+	if session.craft.Thermal.ReferenceHeatCapacity <= 0 {
+		session.craft.Thermal.ReferenceHeatCapacity = 1.8e6
+	}
+	if session.craft.Thermal.MaxSkinTempK <= 0 {
+		session.craft.Thermal.MaxSkinTempK = 1400
+	}
+	session.craft.Structural.Enabled = true
+	if session.craft.Structural.MaxGLoad <= 0 {
+		session.craft.Structural.MaxGLoad = 30
+	}
+	if session.craft.Structural.MaxDynamicQPa <= 0 {
+		session.craft.Structural.MaxDynamicQPa = 1.2e6
+	}
+	if session.craft.Structural.MaxHeatFluxWm2 <= 0 {
+		session.craft.Structural.MaxHeatFluxWm2 = 4e6
+	}
+	session.craft.Pilot.Enabled = true
+	if session.craft.Pilot.MaxGPositive <= 0 {
+		session.craft.Pilot.MaxGPositive = 9
+	}
+	if session.craft.Pilot.MaxGNegative <= 0 {
+		session.craft.Pilot.MaxGNegative = 3
+	}
+	if session.craft.Pilot.MaxGLongitudinal <= 0 {
+		session.craft.Pilot.MaxGLongitudinal = 6
+	}
+	if session.craft.Pilot.MaxGLateral <= 0 {
+		session.craft.Pilot.MaxGLateral = 4
+	}
+	if session.craft.Pilot.RecoveryTauS <= 0 {
+		session.craft.Pilot.RecoveryTauS = 4
+	}
 }
 
 func defaultDragCoefficientForShip(shipType string) float64 {
@@ -836,14 +1238,20 @@ func normalizePlanetPresetForGame(raw string) (string, bool) {
 	switch preset {
 	case "", "earth", "terra":
 		return "earth", true
+	case "mercury":
+		return "mercury", true
 	case "moon", "luna":
 		return "moon", true
 	case "mars":
 		return "mars", true
 	case "venus":
 		return "venus", true
+	case "titan":
+		return "titan", true
 	case "jupiter":
 		return "jupiter", true
+	case "neptune":
+		return "neptune", true
 	default:
 		return "", false
 	}
@@ -904,11 +1312,12 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 	for i := 0; i < steps; i++ {
 		gs.applyControlsLocked(input, gs.dt)
 		lastEval = gs.evaluateGravityLocked()
+		gs.updateDerivedActuationLocked(lastEval)
 
 		primary := gs.primaryBodyLocked()
-		dragEval := physics.DragEvaluation(gs.craft, gs.env, primary)
-		fNet := lastEval.effective.Scale(gs.craft.Mass).Add(dragEval.Force)
-		gs.craft.IntegrateSemiImplicit(gs.dt, fNet, mathx.Vec3{})
+		forceEval := physics.EvaluateForces(gs.craft, gs.env, primary, lastEval.effective)
+		gs.integrateLimitHistoryLocked(forceEval, gs.dt)
+		gs.craft.IntegrateSemiImplicit(gs.dt, forceEval.Net, mathx.Vec3{})
 
 		if gs.env.Ground.Enabled {
 			ground := gs.groundBodyLocked()
@@ -930,6 +1339,112 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 	return gs.buildStateLocked(lastEval), nil
 }
 
+func (gs *gameSession) integrateLimitHistoryLocked(f physics.ForceBreakdown, dt float64) {
+	if dt <= 0 {
+		return
+	}
+	ambient := gs.env.Atmosphere.Temperature0
+	if ambient <= 0 {
+		ambient = 288.15
+	}
+	if gs.skinTempK <= 0 {
+		gs.skinTempK = gs.craft.Thermal.InitialSkinTempK
+		if gs.skinTempK <= 0 {
+			gs.skinTempK = ambient
+		}
+	}
+	// First-order thermal accumulation.
+	capacity := gs.craft.Thermal.ReferenceHeatCapacity
+	if capacity <= 0 {
+		capacity = 1.8e6
+	}
+	cool := 0.02
+	gs.skinTempK += dt * ((f.HeatFlux / capacity) - cool*(gs.skinTempK-ambient))
+	if gs.skinTempK < ambient {
+		gs.skinTempK = ambient
+	}
+
+	// Pilot stress accumulation with exponential-like recovery.
+	pTau := gs.craft.Pilot.RecoveryTauS
+	if pTau <= 0 {
+		pTau = 4.0
+	}
+	stressIn := math.Max(0, f.GLoad-3.5) * dt / pTau
+	stressOut := gs.pilotStress * dt / (pTau * 2.2)
+	gs.pilotStress += stressIn - stressOut
+	if gs.pilotStress < 0 {
+		gs.pilotStress = 0
+	}
+	if gs.pilotStress > 3 {
+		gs.pilotStress = 3
+	}
+
+	// Structural fatigue accumulates on dynamic pressure + heat flux exceedance.
+	maxQ := gs.craft.Structural.MaxDynamicQPa
+	if maxQ <= 0 {
+		maxQ = 1.2e6
+	}
+	maxHF := gs.craft.Structural.MaxHeatFluxWm2
+	if maxHF <= 0 {
+		maxHF = 4e6
+	}
+	qRatio := math.Max(0, f.DynamicQ/maxQ-1.0)
+	hRatio := math.Max(0, f.HeatFlux/maxHF-1.0)
+	gs.structFatigue += dt * (qRatio*0.4 + hRatio*0.6)
+	gs.structFatigue -= dt * 0.01
+	if gs.structFatigue < 0 {
+		gs.structFatigue = 0
+	}
+	if gs.structFatigue > 5 {
+		gs.structFatigue = 5
+	}
+}
+
+func (gs *gameSession) updateDerivedActuationLocked(eval gameGravityEval) {
+	primary := gs.primaryBodyLocked()
+	up := gs.craft.Position.Sub(primary.Position).Normalize()
+	if up.Norm2() == 0 {
+		up = mathx.Vec3{Z: 1}
+	}
+	gMag := eval.raw.Norm()
+	warpAxis := gs.warpAxisWorldLocked()
+	tiltSin := warpAxis.Cross(up).Norm()
+	cMag := math.Abs(gs.couplerState.C)
+	if cMag > 8 {
+		cMag = 8
+	}
+	authority := math.Max(0, cMag-0.1)
+	// Field-vector model: tilt + coupling magnitude converts vertical authority into
+	// lateral effective propulsion to allow planetary translation.
+	gs.craft.Propulsion.Enabled = true
+	autoThrottle := mathx.Clamp(tiltSin*authority, 0, 1)
+	gs.craft.Propulsion.Throttle = mathx.Clamp(autoThrottle+gs.controls.ThrottleTarget, -1, 1)
+	gs.craft.Propulsion.MaxThrust = gs.craft.Mass * gMag * (1 + 6*authority)
+
+	// EM vector field controls in local body-near-planet frame.
+	forward, right := tangentBasisFromUp(up)
+	if forward.Norm2() == 0 {
+		forward = mathx.Vec3{X: 1}
+	}
+	if right.Norm2() == 0 {
+		right = mathx.Vec3{Y: 1}
+	}
+	baseB := gs.env.BField.Norm()
+	if baseB <= 0 {
+		baseB = 3.12e-5
+	}
+	rMag := gs.craft.Position.Sub(primary.Position).Norm()
+	dipoleScale := 1.0
+	if primary.Radius > 0 && rMag > 0 {
+		dipoleScale = math.Pow(primary.Radius/rMag, 3)
+	}
+	planetB := right.Scale(baseB * dipoleScale)
+	gs.env.EField = up.Scale(gs.controls.EFieldTarget)
+	gs.env.BField = planetB.Add(right.Scale(gs.controls.BFieldTarget))
+	gs.craft.EM.Enabled = math.Abs(gs.controls.EMChargeTarget) > 1e-9
+	gs.craft.EM.ChargeC = gs.controls.EMChargeTarget
+}
+
 func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	ampAxis := mathx.Clamp(input.AmpAxis, -1, 1)
 	phiAxis := mathx.Clamp(input.PhiAxis, -1, 1)
@@ -940,17 +1455,29 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	gs.controls.PhiAxis = phiAxis
 	gs.controls.YawAxis = yawAxis
 	gs.controls.PitchAxis = pitchAxis
-	if input.OmegaTarget > 0 {
+	if !math.IsNaN(input.OmegaTarget) && !math.IsInf(input.OmegaTarget, 0) {
 		gs.controls.OmegaTarget = mathx.Clamp(input.OmegaTarget, gs.limits.MinOmegaTarget, gs.limits.MaxOmegaTarget)
 	}
-	if input.QTarget > 0 {
+	if !math.IsNaN(input.QTarget) && !math.IsInf(input.QTarget, 0) {
 		gs.controls.QTarget = mathx.Clamp(input.QTarget, gs.limits.MinQTarget, gs.limits.MaxQTarget)
 	}
-	if input.BetaTarget > 0 {
+	if !math.IsNaN(input.BetaTarget) && !math.IsInf(input.BetaTarget, 0) {
 		gs.controls.BetaTarget = mathx.Clamp(input.BetaTarget, gs.limits.MinBetaTarget, gs.limits.MaxBetaTarget)
 	}
 	if !math.IsNaN(input.PlasmaTarget) {
 		gs.controls.PlasmaTarget = mathx.Clamp(input.PlasmaTarget, gs.limits.MinPlasmaTarget, gs.limits.MaxPlasmaTarget)
+	}
+	if !math.IsNaN(input.ThrottleTarget) && !math.IsInf(input.ThrottleTarget, 0) {
+		gs.controls.ThrottleTarget = mathx.Clamp(input.ThrottleTarget, gs.limits.MinThrottleTarget, gs.limits.MaxThrottleTarget)
+	}
+	if !math.IsNaN(input.EMChargeTarget) && !math.IsInf(input.EMChargeTarget, 0) {
+		gs.controls.EMChargeTarget = mathx.Clamp(input.EMChargeTarget, gs.limits.MinEMChargeTarget, gs.limits.MaxEMChargeTarget)
+	}
+	if !math.IsNaN(input.EFieldTarget) && !math.IsInf(input.EFieldTarget, 0) {
+		gs.controls.EFieldTarget = mathx.Clamp(input.EFieldTarget, gs.limits.MinEFieldTarget, gs.limits.MaxEFieldTarget)
+	}
+	if !math.IsNaN(input.BFieldTarget) && !math.IsInf(input.BFieldTarget, 0) {
+		gs.controls.BFieldTarget = mathx.Clamp(input.BFieldTarget, gs.limits.MinBFieldTarget, gs.limits.MaxBFieldTarget)
 	}
 	if input.LockAssist != nil {
 		gs.controls.LockAssist = *input.LockAssist
@@ -1293,8 +1820,17 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 	vertVel := gs.craft.Velocity.Sub(primary.Velocity).Dot(up)
 
 	warpAxis := gs.warpAxisWorldLocked()
-	dragEval := physics.DragEvaluation(gs.craft, gs.env, primary)
-	dragPower := dragEval.Force.Norm() * dragEval.Speed
+	forceEval := physics.EvaluateForces(gs.craft, gs.env, primary, eval.effective)
+	dragPower := forceEval.DragEval.Force.Norm() * forceEval.DragEval.Speed
+	combinedWarnings := append([]string{}, forceEval.Warnings...)
+	if gs.pilotStress > 1.0 {
+		combinedWarnings = append(combinedWarnings, "pilot-stress")
+	}
+	if gs.structFatigue > 1.0 {
+		combinedWarnings = append(combinedWarnings, "struct-fatigue")
+	}
+	pilotOK := forceEval.PilotOK && gs.pilotStress < 1.6
+	structOK := forceEval.StructOK && gs.structFatigue < 2.0
 
 	return gameStepState{
 		Step:         gs.step,
@@ -1336,6 +1872,10 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		AtmosphereEnabled: gs.env.Atmosphere.Enabled,
 		AtmosphereRho0:    gs.env.Atmosphere.Rho0,
 		AtmosphereScaleH:  gs.env.Atmosphere.ScaleHeight,
+		AtmosphereT0:      gs.env.Atmosphere.Temperature0,
+		AtmosphereLapse:   gs.env.Atmosphere.LapseRate,
+		AtmosphereGamma:   gs.env.Atmosphere.Gamma,
+		AtmosphereR:       gs.env.Atmosphere.GasConstant,
 
 		CouplingC:       gs.couplerState.C,
 		CouplingK:       gs.couplerState.K,
@@ -1354,13 +1894,33 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		PLLFreqDelta:    gs.couplerState.DeltaOmega,
 		OscMag:          cmplx.Abs(gs.couplerState.Z),
 		DrivePower:      gs.couplerState.DrivePower,
-		PlasmaPower:     dragEval.PlasmaPower,
+		PlasmaPower:     forceEval.DragEval.PlasmaPower,
 		Energy:          gs.couplerState.Energy,
-		DragForceMag:    dragEval.Force.Norm(),
+		DragForceMag:    forceEval.DragEval.Force.Norm(),
 		DragPower:       dragPower,
-		DragCdEff:       dragEval.EffectiveCd,
-		DragAreaRef:     dragEval.ReferenceArea,
-		PlasmaReduction: dragEval.PlasmaReduction,
+		DragCdEff:       forceEval.DragEval.EffectiveCd,
+		DragAreaRef:     forceEval.DragEval.ReferenceArea,
+		PlasmaReduction: forceEval.DragEval.PlasmaReduction,
+		LiftForceMag:    forceEval.Lift.Norm(),
+		ThrustForceMag:  forceEval.Thrust.Norm(),
+		EMForceMag:      forceEval.EM.Norm(),
+		Mach:            forceEval.DragEval.Mach,
+		AoA:             forceEval.AoA,
+		LiftCoeff:       forceEval.LiftCoeff,
+		GLoad:           forceEval.GLoad,
+		DynamicPressure: forceEval.DynamicQ,
+		HeatFlux:        forceEval.HeatFlux,
+		SkinTempK:       gs.skinTempK,
+		StructOK:        structOK,
+		PilotOK:         pilotOK,
+		WarningFlags:    strings.Join(combinedWarnings, ","),
+		PilotStress:     gs.pilotStress,
+		StructFatigue:   gs.structFatigue,
+		GAxisLong:       forceEval.GAxisLong,
+		GAxisLat:        forceEval.GAxisLat,
+		GAxisVert:       forceEval.GAxisVert,
+		RelGamma:        forceEval.RelGamma,
+		RelBeta:         forceEval.RelBeta,
 
 		YukawaAlpha:            gs.yukawaAlpha,
 		YukawaLambda:           gs.yukawaLambda,
@@ -1376,22 +1936,26 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		RunawayFlag:            eval.runawayFlag,
 		RunawayExpectedUnderC2: eval.runawayExpectedUnderC2,
 
-		ControlAmpTarget:    gs.controls.AmpTarget,
-		ControlThetaTarget:  gs.controls.ThetaTarget,
-		ControlOmegaTarget:  gs.controls.OmegaTarget,
-		ControlQTarget:      gs.controls.QTarget,
-		ControlBetaTarget:   gs.controls.BetaTarget,
-		ControlPlasmaTarget: gs.controls.PlasmaTarget,
-		ControlAxisYaw:      gs.controls.AxisYaw,
-		ControlAxisPitch:    gs.controls.AxisPitch,
-		ControlWarpX:        warpAxis.X,
-		ControlWarpY:        warpAxis.Y,
-		ControlWarpZ:        warpAxis.Z,
-		ControlLockAssist:   gs.controls.LockAssist,
-		ControlAmpAxis:      gs.controls.AmpAxis,
-		ControlPhiAxis:      gs.controls.PhiAxis,
-		ControlYawAxis:      gs.controls.YawAxis,
-		ControlPitchAxis:    gs.controls.PitchAxis,
+		ControlAmpTarget:      gs.controls.AmpTarget,
+		ControlThetaTarget:    gs.controls.ThetaTarget,
+		ControlOmegaTarget:    gs.controls.OmegaTarget,
+		ControlQTarget:        gs.controls.QTarget,
+		ControlBetaTarget:     gs.controls.BetaTarget,
+		ControlPlasmaTarget:   gs.controls.PlasmaTarget,
+		ControlThrottleTarget: gs.controls.ThrottleTarget,
+		ControlEMChargeTarget: gs.controls.EMChargeTarget,
+		ControlEFieldTarget:   gs.controls.EFieldTarget,
+		ControlBFieldTarget:   gs.controls.BFieldTarget,
+		ControlAxisYaw:        gs.controls.AxisYaw,
+		ControlAxisPitch:      gs.controls.AxisPitch,
+		ControlWarpX:          warpAxis.X,
+		ControlWarpY:          warpAxis.Y,
+		ControlWarpZ:          warpAxis.Z,
+		ControlLockAssist:     gs.controls.LockAssist,
+		ControlAmpAxis:        gs.controls.AmpAxis,
+		ControlPhiAxis:        gs.controls.PhiAxis,
+		ControlYawAxis:        gs.controls.YawAxis,
+		ControlPitchAxis:      gs.controls.PitchAxis,
 	}
 }
 

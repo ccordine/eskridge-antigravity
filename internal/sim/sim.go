@@ -146,9 +146,8 @@ func Run(cfg config.Scenario, sink func(Sample) error) (Result, error) {
 			return Result{}, fmt.Errorf("unsupported gravity model type %q", gravityModel)
 		}
 
-		fDrag := physics.DragForce(craft, env, primary)
-		fNet := aG.Scale(craft.Mass).Add(fDrag)
-		craft.IntegrateSemiImplicit(cfg.Dt, fNet, mathx.Vec3{})
+		forceEval := physics.EvaluateForces(craft, env, primary, aG)
+		craft.IntegrateSemiImplicit(cfg.Dt, forceEval.Net, mathx.Vec3{})
 
 		if env.Ground.Enabled {
 			bidx := env.Ground.BodyIndex

@@ -1,58 +1,45 @@
-<article id="paper-fragment" class="paper-prose" data-flight-lab-root>
-  <header class="lab-hero">
-    <div class="lab-hero-copy">
+<article id="paper-fragment" class="paper-prose lab-cockpit-page" data-flight-lab-root>
+  <header class="lab-command-mast">
+    <div class="lab-command-title">
       <p class="lab-eyebrow">Sim Game</p>
       <h2>Antigravity Flight Lab</h2>
-      <p class="lab-hero-lede">Physics-driven sandbox with live coupler, PLL, warp-axis steering, and planet-aware gravity. Free play is the default cockpit path.</p>
-      <div class="lab-chip-row">
-        <span class="lab-chip">free_play default</span>
-        <span class="lab-chip">globe or flat map</span>
-        <span class="lab-chip">drag-first controls</span>
-      </div>
     </div>
 
-    <div class="lab-hero-actions">
-      <button data-guide-open class="lab-btn lab-btn-ghost">Flight Guide</button>
+    <div class="lab-status-strip">
+      <div class="lab-status" data-game-status>ready</div>
+      <button data-guide-open class="lab-btn lab-btn-ghost" type="button">Flight Guide</button>
     </div>
   </header>
 
-  <div class="lab-flow">
-    <section class="lab-panel lab-section-panel">
-      <div class="lab-block-head">
+  <main class="lab-page-grid">
+    <section class="lab-band lab-launch-band">
+      <div class="lab-band-head">
         <div>
           <p class="lab-block-step">1. Setup</p>
-          <h3>Configure Session</h3>
-          <p class="lab-panel-caption">Choose scenario, ship, scale, world, and sim rate before launch.</p>
+          <h3>Launch Deck</h3>
         </div>
-      </div>
-
-      <div class="lab-setup-bar">
-        <div class="lab-status" data-game-status>ready</div>
         <div class="lab-command-row">
-          <button data-game-start class="lab-btn lab-btn-primary">Start Session</button>
-          <button data-game-pause class="lab-btn lab-btn-ghost">Pause</button>
-          <button data-game-reset class="lab-btn lab-btn-ghost">Reset</button>
-          <button data-game-stop class="lab-btn lab-btn-danger">End Session</button>
+          <button data-game-start class="lab-btn lab-btn-primary" type="button">Start</button>
+          <button data-game-pause class="lab-btn lab-btn-ghost" type="button">Pause</button>
+          <button data-game-reset class="lab-btn lab-btn-ghost" type="button">Reset</button>
+          <button data-game-stop class="lab-btn lab-btn-danger" type="button">End</button>
         </div>
       </div>
 
-      <div class="lab-form-grid lab-form-grid-setup">
-        <label class="lab-field lab-field-span">
-          <span class="lab-label">Scenario</span>
-          <select data-scenario-select class="lab-select"></select>
-        </label>
-
+      <div class="lab-launch-grid">
         <label class="lab-field">
           <span class="lab-label">Warp Drive</span>
           <select data-warp-drive class="lab-select">
-            <option value="standard">standard anti-gravity (PLL)</option>
-            <option value="scenario_default">scenario default</option>
-            <option value="off">coupler off / gravity only</option>
+            <option value="resonant_pll">resonant pll drive</option>
+            <option value="geodesic">geodesic drive</option>
+            <option value="inertial_gradient">inertial-gradient drive</option>
+            <option value="plasma_mhd">plasma-mhd assist drive</option>
+            <option value="alcubierre_ag">alcubierre-ag drive</option>
           </select>
         </label>
 
         <label class="lab-field">
-          <span class="lab-label">Ship Type</span>
+          <span class="lab-label">Ship</span>
           <select data-ship-type class="lab-select">
             <option value="saucer">saucer</option>
             <option value="sphere">sphere</option>
@@ -63,7 +50,7 @@
         </label>
 
         <label class="lab-field">
-          <span class="lab-label">Map Mode</span>
+          <span class="lab-label">Map</span>
           <select data-map-mode class="lab-select">
             <option value="planetary">planetary</option>
             <option value="local">local</option>
@@ -71,26 +58,29 @@
         </label>
 
         <label class="lab-field">
-          <span class="lab-label">Planet Preset</span>
+          <span class="lab-label">Planet</span>
           <select data-planet-preset class="lab-select">
             <option value="earth">earth (1.00 g)</option>
+            <option value="mercury">mercury (0.38 g)</option>
             <option value="moon">moon (0.165 g)</option>
             <option value="mars">mars (0.38 g)</option>
             <option value="venus">venus (0.90 g)</option>
+            <option value="titan">titan (0.14 g)</option>
             <option value="jupiter">jupiter (2.53 g)</option>
+            <option value="neptune">neptune (1.14 g)</option>
           </select>
         </label>
 
         <label class="lab-field">
-          <span class="lab-label">Planet Camera</span>
+          <span class="lab-label">Camera</span>
           <select data-planetary-camera class="lab-select">
-            <option value="follow">follow craft</option>
             <option value="global">global</option>
+            <option value="follow">follow craft</option>
           </select>
         </label>
 
         <label class="lab-field">
-          <span class="lab-label">Planet Zoom</span>
+          <span class="lab-label">Zoom</span>
           <input data-planetary-zoom type="number" min="0.25" max="25" step="0.25" value="2.0" class="lab-input" />
         </label>
 
@@ -99,38 +89,46 @@
           <input data-game-speed type="number" min="0.25" max="8" step="0.25" value="1.0" class="lab-input" />
         </label>
 
-        <label class="lab-field lab-field-span">
-          <span class="lab-label">Craft Scale (Lazar floor)</span>
-          <div class="lab-scale-row">
+        <label class="lab-field lab-field-wide">
+          <span class="lab-label">Craft Scale</span>
+          <div class="lab-range-row">
             <input data-craft-scale type="range" min="1" max="6" step="0.05" value="1.0" class="lab-slider" />
-            <p data-craft-scale-readout class="lab-range-readout">1.00x • 15.8 m</p>
+            <p data-craft-scale-readout class="lab-range-readout">1.00x - 15.8 m</p>
           </div>
-          <p class="lab-compact-note">Scale floor is <span class="font-mono">1.00x</span> (~15.8 m / 52 ft span). Physics scaling uses <span class="font-mono">mass∝scale^3</span> and <span class="font-mono">drag area∝scale^2</span>.</p>
         </label>
 
-        <label class="lab-toggle-card lab-toggle-card-span">
+        <label class="lab-toggle-card">
           <input data-game-start-ground type="checkbox" checked class="lab-checkbox" />
           <span>Start On Ground</span>
         </label>
       </div>
+
+      <div class="lab-setup-profile">
+        <p class="lab-label">Drive Profile</p>
+        <p data-stat="drive_profile" class="font-mono text-sm">-</p>
+      </div>
+      <div class="lab-setup-profile">
+        <p class="lab-label">Calibration</p>
+        <button data-calibration-refresh class="lab-mini-btn" type="button">Refresh Calibration</button>
+        <p data-stat="calibration_summary" class="font-mono text-sm">-</p>
+      </div>
     </section>
 
-    <section class="lab-panel lab-section-panel lab-player-panel">
-      <div class="lab-block-head">
+    <section class="lab-band lab-flight-band">
+      <div class="lab-band-head">
         <div>
           <p class="lab-block-step">2. Player</p>
-          <h3>Flight Deck</h3>
-          <p class="lab-panel-caption">Views, live flight readout, and direct coupler controls in one compact cockpit.</p>
+          <h3>Flight Console</h3>
         </div>
-        <p class="lab-player-hint"><span class="font-mono">A/D</span> amp • <span class="font-mono">W/S</span> phase • <span class="font-mono">Q/E</span> yaw • <span class="font-mono">I/K</span> pitch • <span class="font-mono">Space</span> lock • <span class="font-mono">P</span> pause • <span class="font-mono">R</span> reset</p>
+        <p class="lab-player-hint">A/D amp - W/S phase - Q/E yaw - I/K tilt - Space lock - P pause - R reset</p>
       </div>
 
-      <div class="lab-player-layout">
-        <div class="lab-player-visuals">
+      <div class="lab-flight-grid">
+        <div class="lab-flight-main">
           <section class="lab-cockpit-main">
             <div class="lab-render-head">
               <p class="chart-title">3D Flight View</p>
-              <p class="lab-render-subtitle">primary flight camera</p>
+              <p class="lab-render-subtitle">primary camera</p>
             </div>
             <canvas data-game-canvas-3d class="flight-canvas flight-canvas-main"></canvas>
 
@@ -161,210 +159,259 @@
             </div>
           </section>
 
-          <p class="lab-player-note">Idealized high-Q piezo-resonant geometry: <span class="font-mono">Power Required Now</span> shows equivalent field/work demand, while <span class="font-mono">High-Q Pump Draw</span> shows resonant pump throughput.</p>
+          <section class="lab-hud-grid lab-hud-grid-compact">
+            <div class="lab-hud-tile">
+              <span>Speed</span>
+              <strong data-stat="view_speed_main">-</strong>
+              <small data-stat="view_speed_sub">-</small>
+            </div>
+            <div class="lab-hud-tile">
+              <span>Power Required</span>
+              <strong data-stat="view_power_required">-</strong>
+              <small data-stat="view_power_required_sub">-</small>
+            </div>
+            <div class="lab-hud-tile">
+              <span>High-Q Pump</span>
+              <strong data-stat="view_power_draw">-</strong>
+              <small data-stat="view_power_draw_sub">-</small>
+            </div>
+            <div class="lab-hud-tile">
+              <span>Altitude</span>
+              <strong data-stat="view_altitude">-</strong>
+            </div>
+            <div class="lab-hud-tile">
+              <span>Weight xg</span>
+              <strong data-stat="view_weight">-</strong>
+            </div>
+            <div class="lab-hud-tile">
+              <span>Lock</span>
+              <strong data-stat="view_lock">-</strong>
+              <small data-stat="view_lock_sub">-</small>
+            </div>
+          </section>
         </div>
 
-        <div class="lab-player-console">
-          <section class="lab-player-summary stat-card">
-            <div class="lab-player-summary-row">
-              <div class="lab-player-summary-head">
-                <p class="lab-stat-title">Speed</p>
-                <p data-stat="view_speed_main" class="lab-player-summary-value">-</p>
-              </div>
-              <p data-stat="view_speed_sub" class="lab-player-summary-meta">-</p>
+        <aside class="lab-flight-controls">
+          <section class="lab-console-section lab-console-section-flight">
+            <div class="lab-console-section-head">
+              <p class="lab-section-title">Vector Controls</p>
+              <button data-control-bars-center class="lab-mini-btn" type="button">Center Warp</button>
             </div>
 
-            <div class="lab-player-summary-row">
-              <div class="lab-player-summary-head">
-                <p class="lab-stat-title">Power Required</p>
-                <p data-stat="view_power_required" class="lab-player-summary-value">-</p>
-              </div>
-              <p data-stat="view_power_required_sub" class="lab-player-summary-meta">-</p>
-            </div>
+            <div class="lab-control-grid lab-control-grid-flight">
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Amplitude</p>
+                    <p class="lab-control-card-sub">drive target</p>
+                  </div>
+                  <label class="lab-slider-lock">
+                    <input data-hold-amp-enabled type="checkbox" checked class="lab-checkbox" />
+                    <span>Lock</span>
+                  </label>
+                </div>
+                <p data-control-readout="amp" class="lab-control-readout">2.500</p>
+                <input data-hold-amp-target type="range" min="-1" max="1" step="0.01" value="0.0" class="lab-slider" />
+              </section>
 
-            <div class="lab-player-summary-row">
-              <div class="lab-player-summary-head">
-                <p class="lab-stat-title">High-Q Pump</p>
-                <p data-stat="view_power_draw" class="lab-player-summary-value">-</p>
-              </div>
-              <p data-stat="view_power_draw_sub" class="lab-player-summary-meta">-</p>
-            </div>
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Phase</p>
+                    <p class="lab-control-card-sub">theta / rad</p>
+                  </div>
+                  <label class="lab-slider-lock">
+                    <input data-hold-phi-enabled type="checkbox" checked class="lab-checkbox" />
+                    <span>Lock</span>
+                  </label>
+                </div>
+                <p data-control-readout="phi" class="lab-control-readout">0.000</p>
+                <input data-hold-phi-target type="range" min="-1" max="1" step="0.01" value="0.0" class="lab-slider" />
+              </section>
 
-            <div class="lab-player-summary-row">
-              <div class="lab-player-summary-head">
-                <p class="lab-stat-title">Altitude</p>
-                <p data-stat="view_altitude" class="lab-player-summary-value">-</p>
-              </div>
-            </div>
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Yaw</p>
+                    <p class="lab-control-card-sub">tilt heading</p>
+                  </div>
+                  <label class="lab-slider-lock">
+                    <input data-hold-yaw-enabled type="checkbox" checked class="lab-checkbox" />
+                    <span>Lock</span>
+                  </label>
+                </div>
+                <p data-control-readout="yaw" class="lab-control-readout">0.000</p>
+                <input data-hold-yaw-target type="range" min="-1" max="1" step="0.01" value="0.0" class="lab-slider" />
+              </section>
 
-            <div class="lab-player-summary-row">
-              <div class="lab-player-summary-head">
-                <p class="lab-stat-title">Weight xg</p>
-                <p data-stat="view_weight" class="lab-player-summary-value">-</p>
-              </div>
-            </div>
-
-            <div class="lab-player-summary-row">
-              <div class="lab-player-summary-head">
-                <p class="lab-stat-title">Lock</p>
-                <p data-stat="view_lock" class="lab-player-summary-value">-</p>
-              </div>
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Tilt</p>
+                    <p class="lab-control-card-sub">off local up</p>
+                  </div>
+                  <label class="lab-slider-lock">
+                    <input data-hold-pitch-enabled type="checkbox" checked class="lab-checkbox" />
+                    <span>Lock</span>
+                  </label>
+                </div>
+                <p data-control-readout="pitch" class="lab-control-readout">0.000</p>
+                <input data-hold-pitch-target type="range" min="-1" max="1" step="0.01" value="0.0" class="lab-slider" />
+              </section>
             </div>
           </section>
 
-          <div class="lab-control-grid">
-            <section class="lab-control-card">
-              <div class="lab-control-card-head">
-                <div>
-                  <p class="lab-control-card-title">Amplitude</p>
-                  <p class="lab-control-card-sub">drive target</p>
-                </div>
-                <label class="lab-slider-lock">
-                  <input data-hold-amp-enabled type="checkbox" checked class="lab-checkbox" />
-                  <span>Lock</span>
-                </label>
-              </div>
-              <p data-control-readout="amp" class="lab-control-readout">2.500</p>
-              <input data-hold-amp-target type="range" min="0" max="24" step="0.01" value="2.5" class="lab-slider" />
-            </section>
-
-            <section class="lab-control-card">
-              <div class="lab-control-card-head">
-                <div>
-                  <p class="lab-control-card-title">Phase</p>
-                  <p class="lab-control-card-sub">theta / rad</p>
-                </div>
-                <label class="lab-slider-lock">
-                  <input data-hold-phi-enabled type="checkbox" checked class="lab-checkbox" />
-                  <span>Lock</span>
-                </label>
-              </div>
-              <p data-control-readout="phi" class="lab-control-readout">0.000</p>
-              <input data-hold-phi-target type="range" min="-3.142" max="3.142" step="0.001" value="0.0" class="lab-slider" />
-            </section>
-
-            <section class="lab-control-card">
-              <div class="lab-control-card-head">
-                <div>
-                  <p class="lab-control-card-title">Yaw</p>
-                  <p class="lab-control-card-sub">tilt heading around local up</p>
-                </div>
-                <label class="lab-slider-lock">
-                  <input data-hold-yaw-enabled type="checkbox" checked class="lab-checkbox" />
-                  <span>Lock</span>
-                </label>
-              </div>
-              <p data-control-readout="yaw" class="lab-control-readout">0.000</p>
-              <input data-hold-yaw-target type="range" min="-3.142" max="3.142" step="0.001" value="0.0" class="lab-slider" />
-            </section>
-
-            <section class="lab-control-card">
-              <div class="lab-control-card-head">
-                <div>
-                  <p class="lab-control-card-title">Tilt</p>
-                  <p class="lab-control-card-sub">warp tilt off local up</p>
-                </div>
-                <label class="lab-slider-lock">
-                  <input data-hold-pitch-enabled type="checkbox" checked class="lab-checkbox" />
-                  <span>Lock</span>
-                </label>
-              </div>
-              <p data-control-readout="pitch" class="lab-control-readout">0.000</p>
-              <input data-hold-pitch-target type="range" min="-1.53" max="1.53" step="0.001" value="0.0" class="lab-slider" />
-            </section>
-          </div>
-
-          <div class="lab-subpanel-head">
-            <div>
+          <section class="lab-console-section lab-console-section-resonator">
+            <div class="lab-console-section-head">
               <p class="lab-section-title">Resonator Rig</p>
-              <p class="lab-panel-caption">Tune the spring/cavity resonance, Q-loss profile, and pump feed into the oscillator.</p>
-            </div>
-          </div>
-
-          <div class="lab-control-grid">
-            <section class="lab-control-card">
-              <div class="lab-control-card-head">
-                <div>
-                  <p class="lab-control-card-title">Tune ω0</p>
-                  <p class="lab-control-card-sub">resonance / rad s^-1</p>
-                </div>
-              </div>
-              <p data-control-readout="omega" class="lab-control-readout">80.00</p>
-              <input data-osc-omega-target type="range" min="40" max="160" step="0.1" value="80.0" class="lab-slider" />
-            </section>
-
-            <section class="lab-control-card">
-              <div class="lab-control-card-head">
-                <div>
-                  <p class="lab-control-card-title">Q</p>
-                  <p class="lab-control-card-sub">loss / energy storage</p>
-                </div>
-              </div>
-              <p data-control-readout="q" class="lab-control-readout">45.0</p>
-              <input data-osc-q-target type="range" min="5" max="240" step="1" value="45" class="lab-slider" />
-            </section>
-
-            <section class="lab-control-card">
-              <div class="lab-control-card-head">
-                <div>
-                  <p class="lab-control-card-title">Pump β</p>
-                  <p class="lab-control-card-sub">drive into resonator</p>
-                </div>
-              </div>
-              <p data-control-readout="beta" class="lab-control-readout">1.200</p>
-              <input data-osc-beta-target type="range" min="0.2" max="4.0" step="0.01" value="1.2" class="lab-slider" />
-            </section>
-
-            <section class="lab-control-card">
-              <div class="lab-control-card-head">
-                <div>
-                  <p class="lab-control-card-title">Plasma Sheath</p>
-                  <p class="lab-control-card-sub">boundary-layer drag control</p>
-                </div>
-              </div>
-              <p data-control-readout="plasma" class="lab-control-readout">0.000</p>
-              <input data-plasma-target type="range" min="0.0" max="1.0" step="0.01" value="0.0" class="lab-slider" />
-            </section>
-          </div>
-
-          <div class="lab-assist-grid">
-            <label class="lab-toggle-card lab-toggle-card-span">
-              <input data-auto-trim type="checkbox" class="lab-checkbox" />
-              <span>Auto Trim Assist</span>
-            </label>
-
-            <label class="lab-field">
-              <span class="lab-label">Target Weight (xg)</span>
-              <input data-auto-weight type="number" min="-3.0" max="3.0" step="0.05" value="0.0" class="lab-input" />
-            </label>
-
-            <label class="lab-field">
-              <span class="lab-label">Target Vertical (m/s)</span>
-              <input data-auto-vertical type="number" min="-200" max="200" step="0.5" value="0.0" class="lab-input" />
-            </label>
-
-            <div class="lab-preset-row lab-preset-row-wide">
-              <button data-assist-preset="hover" class="lab-btn lab-btn-soft">Hover</button>
-              <button data-assist-preset="neutral" class="lab-btn lab-btn-soft">Normal g</button>
-              <button data-assist-preset="ascend" class="lab-btn lab-btn-soft">Ascend</button>
-              <button data-assist-preset="descend" class="lab-btn lab-btn-soft">Descend</button>
+              <button data-guide-open class="lab-mini-btn" type="button">Q Guide</button>
             </div>
 
-            <div class="lab-action-row lab-action-row-wide">
-              <button data-hold-capture class="lab-btn lab-btn-soft">Capture Current</button>
-              <button data-control-bars-center class="lab-btn lab-btn-soft">Center Warp</button>
+            <div class="lab-resonator-instruments">
+              <div class="lab-instrument-tile"><p>Lock</p><strong data-stat="res_lock_mini">-</strong></div>
+              <div class="lab-instrument-tile"><p>Phase Err</p><strong data-stat="res_phase_mini">-</strong></div>
+              <div class="lab-instrument-tile"><p>Osc Mag</p><strong data-stat="res_osc_mini">-</strong></div>
+              <div class="lab-instrument-tile"><p>k</p><strong data-stat="res_k_mini">-</strong></div>
+              <div class="lab-instrument-tile"><p>C</p><strong data-stat="res_c_mini">-</strong></div>
+              <div class="lab-instrument-tile"><p>Drive</p><strong data-stat="res_power_mini">-</strong></div>
             </div>
-          </div>
-        </div>
+
+            <div class="lab-preset-row lab-resonator-presets">
+              <button data-resonator-preset="recover" class="lab-btn lab-btn-soft" type="button">Recover Lock</button>
+              <button data-resonator-preset="build" class="lab-btn lab-btn-soft" type="button">Build Q</button>
+              <button data-resonator-preset="push" class="lab-btn lab-btn-soft" type="button">Push Power</button>
+            </div>
+
+            <div class="lab-control-grid lab-control-grid-resonator">
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Tune omega0</p>
+                    <p class="lab-control-card-sub">resonance</p>
+                  </div>
+                </div>
+                <p data-control-readout="omega" class="lab-control-readout">80.00</p>
+                <input data-osc-omega-target type="range" min="0.1" max="1000000" step="0.1" value="80.0" class="lab-slider" />
+              </section>
+
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Q</p>
+                    <p class="lab-control-card-sub">loss / storage</p>
+                  </div>
+                </div>
+                <p data-control-readout="q" class="lab-control-readout">45.0</p>
+                <input data-osc-q-target type="range" min="0.01" max="1000000" step="0.01" value="45" class="lab-slider" />
+              </section>
+
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Pump beta</p>
+                    <p class="lab-control-card-sub">resonator feed</p>
+                  </div>
+                </div>
+                <p data-control-readout="beta" class="lab-control-readout">1.200</p>
+                <input data-osc-beta-target type="range" min="0.0" max="1000000" step="0.01" value="1.2" class="lab-slider" />
+              </section>
+
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Plasma</p>
+                    <p class="lab-control-card-sub">drag control</p>
+                  </div>
+                </div>
+                <p data-control-readout="plasma" class="lab-control-readout">0.000</p>
+                <input data-plasma-target type="range" min="0.0" max="1.0" step="0.01" value="0.0" class="lab-slider" />
+              </section>
+
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Throttle Bias</p>
+                    <p class="lab-control-card-sub">manual thrust trim</p>
+                  </div>
+                </div>
+                <p data-control-readout="throttle" class="lab-control-readout">0.000</p>
+                <input data-throttle-target type="range" min="-1.0" max="1.0" step="0.01" value="0.0" class="lab-slider" />
+              </section>
+
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">EM Charge</p>
+                    <p class="lab-control-card-sub">q / coulomb</p>
+                  </div>
+                </div>
+                <p data-control-readout="emcharge" class="lab-control-readout">0.0</p>
+                <input data-em-charge-target type="range" min="-20000" max="20000" step="10" value="0.0" class="lab-slider" />
+              </section>
+
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">E Field</p>
+                    <p class="lab-control-card-sub">vertical N/C</p>
+                  </div>
+                </div>
+                <p data-control-readout="efield" class="lab-control-readout">0.0</p>
+                <input data-e-field-target type="range" min="-100000" max="100000" step="100" value="0.0" class="lab-slider" />
+              </section>
+
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">B Field</p>
+                    <p class="lab-control-card-sub">lateral tesla</p>
+                  </div>
+                </div>
+                <p data-control-readout="bfield" class="lab-control-readout">0.000</p>
+                <input data-b-field-target type="range" min="-5.0" max="5.0" step="0.001" value="0.0" class="lab-slider" />
+              </section>
+            </div>
+          </section>
+
+          <section class="lab-console-section lab-console-section-assist">
+            <div class="lab-console-section-head">
+              <p class="lab-section-title">Assist Layer</p>
+              <button data-hold-capture class="lab-mini-btn" type="button">Capture</button>
+            </div>
+
+            <div class="lab-assist-grid">
+              <label class="lab-toggle-card lab-toggle-card-span">
+                <input data-auto-trim type="checkbox" class="lab-checkbox" />
+                <span>Auto Trim Assist</span>
+              </label>
+
+              <label class="lab-field">
+                <span class="lab-label">Target Weight (xg)</span>
+                <input data-auto-weight type="number" min="-1000.0" max="1000.0" step="0.05" value="0.0" class="lab-input" />
+              </label>
+
+              <label class="lab-field">
+                <span class="lab-label">Target Vertical (m/s)</span>
+                <input data-auto-vertical type="number" min="-100000" max="100000" step="0.5" value="0.0" class="lab-input" />
+              </label>
+
+              <div class="lab-preset-row lab-preset-row-wide">
+                <button data-assist-preset="hover" class="lab-btn lab-btn-soft" type="button">Hover</button>
+                <button data-assist-preset="neutral" class="lab-btn lab-btn-soft" type="button">Normal g</button>
+                <button data-assist-preset="ascend" class="lab-btn lab-btn-soft" type="button">Ascend</button>
+                <button data-assist-preset="descend" class="lab-btn lab-btn-soft" type="button">Descend</button>
+              </div>
+            </div>
+          </section>
+        </aside>
       </div>
     </section>
 
-    <section class="lab-panel lab-section-panel">
-      <div class="lab-block-head">
+    <section class="lab-band lab-state-band">
+      <div class="lab-band-head">
         <div>
           <p class="lab-block-step">3. State</p>
-          <h3>Flight State</h3>
-          <p class="lab-panel-caption">Persistent craft, environment, and pilot state while you fly.</p>
+          <h3>Systems State</h3>
         </div>
       </div>
 
@@ -372,7 +419,6 @@
         <section class="lab-subpanel">
           <div class="lab-subpanel-head">
             <p class="lab-section-title">Flight Snapshot</p>
-            <p class="lab-panel-caption">Live velocity, altitude, and session identity.</p>
           </div>
           <div class="lab-kpi-grid">
             <div class="stat-card"><p class="lab-stat-title">Time</p><p data-stat="time" class="font-mono text-sm">-</p></div>
@@ -390,7 +436,6 @@
         <section class="lab-subpanel">
           <div class="lab-subpanel-head">
             <p class="lab-section-title">Craft State</p>
-            <p class="lab-panel-caption">Scale, mass, and gravity-relative loading.</p>
           </div>
           <div class="lab-kpi-grid">
             <div class="stat-card"><p class="lab-stat-title">Craft Scale</p><p data-stat="craft_scale" class="font-mono text-sm">-</p></div>
@@ -407,7 +452,6 @@
         <section class="lab-subpanel">
           <div class="lab-subpanel-head">
             <p class="lab-section-title">Pilot State</p>
-            <p class="lab-panel-caption">Direct setpoints, assist state, and most recent input effect.</p>
           </div>
           <div class="lab-kpi-grid">
             <div class="stat-card"><p class="lab-stat-title">Set Amp</p><p data-stat="pilot_set_amp" class="font-mono text-sm">-</p></div>
@@ -423,32 +467,28 @@
       </div>
     </section>
 
-    <section class="lab-panel lab-section-panel">
-      <div class="lab-block-head">
+    <section class="lab-band lab-data-band">
+      <div class="lab-band-head">
         <div>
           <p class="lab-block-step">4. Data</p>
           <h3>Telemetry and Export</h3>
-          <p class="lab-panel-caption">Detailed power, drive, control telemetry, and export tools.</p>
         </div>
-      </div>
-
-      <div class="lab-export-row">
-        <button data-export-sim data-export-format="zip" class="lab-btn lab-btn-soft">Export ZIP</button>
-        <button data-export-sim data-export-format="csv" class="lab-btn lab-btn-soft">Export CSV</button>
-        <button data-export-sim data-export-format="meta" class="lab-btn lab-btn-soft">Export Meta JSON</button>
+        <div class="lab-export-row">
+          <button data-export-sim data-export-format="zip" class="lab-btn lab-btn-soft" type="button">Export ZIP</button>
+          <button data-export-sim data-export-format="csv" class="lab-btn lab-btn-soft" type="button">Export CSV</button>
+          <button data-export-sim data-export-format="meta" class="lab-btn lab-btn-soft" type="button">Export Meta JSON</button>
+        </div>
       </div>
 
       <div class="lab-data-grid">
         <section class="lab-subpanel">
           <div class="lab-subpanel-head">
             <p class="lab-section-title">Energy Budget</p>
-            <p class="lab-panel-caption">Ideal high-Q resonant pump draw plus classical <span class="font-mono">m*g*v</span> climb floor for context.</p>
+            <label class="lab-inline-field">
+              <span class="lab-label">Minutes</span>
+              <input data-energy-horizon type="number" min="1" max="720" step="1" value="10" class="lab-input lab-input-compact" />
+            </label>
           </div>
-          <label class="lab-inline-field">
-            <span class="lab-label">Mission Minutes</span>
-            <input data-energy-horizon type="number" min="1" max="720" step="1" value="10" class="lab-input lab-input-compact" />
-          </label>
-
           <div class="lab-kpi-grid">
             <div class="stat-card"><p class="lab-stat-title">Drive Power</p><p data-stat="energy_power" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Specific Power</p><p data-stat="energy_specific" class="font-mono text-sm">-</p></div>
@@ -466,13 +506,34 @@
         <section class="lab-subpanel">
           <div class="lab-subpanel-head">
             <p class="lab-section-title">Atmosphere and Drag</p>
-            <p class="lab-panel-caption">Backend atmosphere state plus drag/plasma diagnostics. Plasma is modeled as conservative boundary-layer flow control, not perfect drag erasure.</p>
           </div>
-
           <div class="lab-kpi-grid">
             <div class="stat-card"><p class="lab-stat-title">Atmosphere</p><p data-stat="atm_enabled" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Rho0</p><p data-stat="atm_rho0" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Scale Height</p><p data-stat="atm_scale_height" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">T0</p><p data-stat="atm_t0" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Lapse</p><p data-stat="atm_lapse" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Gamma</p><p data-stat="atm_gamma" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Gas R</p><p data-stat="atm_r" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Mach</p><p data-stat="mach" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">AoA</p><p data-stat="aoa" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Lift</p><p data-stat="lift_force" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Thrust</p><p data-stat="thrust_force" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">EM Force</p><p data-stat="em_force" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">G-Load</p><p data-stat="g_load" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Dynamic q</p><p data-stat="dynamic_q" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Heat Flux</p><p data-stat="heat_flux" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Skin Temp</p><p data-stat="skin_temp" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Struct</p><p data-stat="struct_ok" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Struct Fatigue</p><p data-stat="struct_fatigue" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Pilot</p><p data-stat="pilot_ok" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Pilot Stress</p><p data-stat="pilot_stress" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">G Long</p><p data-stat="g_long" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">G Lat</p><p data-stat="g_lat" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">G Vert</p><p data-stat="g_vert" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Rel Beta</p><p data-stat="rel_beta" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Rel Gamma</p><p data-stat="rel_gamma" class="font-mono text-sm">-</p></div>
+            <div class="stat-card lab-kpi-wide"><p class="lab-stat-title">Warnings</p><p data-stat="warn_flags" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Plasma Target</p><p data-stat="plasma_target" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Plasma Reduction</p><p data-stat="plasma_reduction" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Plasma Power</p><p data-stat="plasma_power" class="font-mono text-sm">-</p></div>
@@ -486,16 +547,14 @@
         <section class="lab-subpanel">
           <div class="lab-subpanel-head">
             <p class="lab-section-title">Coupler and Drive</p>
-            <p class="lab-panel-caption">Instantaneous lock, oscillator, and drive telemetry.</p>
           </div>
-
           <div class="lab-kpi-grid">
             <div class="stat-card"><p class="lab-stat-title">C</p><p data-stat="c" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">k</p><p data-stat="k" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">phi</p><p data-stat="phi" class="font-mono text-sm">-</p></div>
-            <div class="stat-card"><p class="lab-stat-title">Resonance ω0</p><p data-stat="res_omega0" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Resonance omega0</p><p data-stat="res_omega0" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Resonator Q</p><p data-stat="res_q" class="font-mono text-sm">-</p></div>
-            <div class="stat-card"><p class="lab-stat-title">Pump β</p><p data-stat="res_beta" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Pump beta</p><p data-stat="res_beta" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Phase Error</p><p data-stat="phase" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Lock</p><p data-stat="lock" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Runaway</p><p data-stat="runaway" class="font-mono text-sm">-</p></div>
@@ -512,14 +571,12 @@
 
         <section class="lab-subpanel lab-data-span">
           <div class="lab-subpanel-head">
-            <p class="lab-section-title">Control and Assist Telemetry</p>
-            <p class="lab-panel-caption">Targets, warp vector components, and manual vs assist axes.</p>
+            <p class="lab-section-title">Control Telemetry</p>
           </div>
-
           <div class="lab-kpi-grid">
             <div class="stat-card"><p class="lab-stat-title">Amp Target</p><p data-stat="amp_target" class="font-mono text-sm">-</p></div>
-            <div class="stat-card"><p class="lab-stat-title">Theta Target (rad)</p><p data-stat="theta_target" class="font-mono text-sm">-</p></div>
-            <div class="stat-card"><p class="lab-stat-title">Theta Cycle (0-1)</p><p data-stat="theta_cycle" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Theta Target</p><p data-stat="theta_target" class="font-mono text-sm">-</p></div>
+            <div class="stat-card"><p class="lab-stat-title">Theta Cycle</p><p data-stat="theta_cycle" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Omega Target</p><p data-stat="omega_target" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Q Target</p><p data-stat="q_target" class="font-mono text-sm">-</p></div>
             <div class="stat-card"><p class="lab-stat-title">Beta Target</p><p data-stat="beta_target" class="font-mono text-sm">-</p></div>
@@ -547,28 +604,32 @@
         </section>
       </div>
     </section>
-  </div>
+  </main>
 
   <div data-guide-modal class="guide-modal hidden" role="dialog" aria-modal="true" aria-labelledby="flight-guide-title">
     <div class="guide-modal-panel">
       <div class="guide-modal-header">
         <h3 id="flight-guide-title" class="font-display text-xl text-paper-ink">Flight Guide</h3>
-        <button data-guide-close class="lab-btn lab-btn-ghost">Close</button>
+        <button data-guide-close class="lab-btn lab-btn-ghost" type="button">Close</button>
       </div>
+      <section class="guide-callout">
+        <p class="guide-callout-title">Resonator Rig</p>
+        <p>Tune the spring/cavity resonance, Q-loss profile, and pump feed into the oscillator.</p>
+        <p>In this sim, Tune omega0 lines the resonator up with the drive, Q reduces loss and stores oscillatory energy longer, and Pump beta pushes energy into the cavity faster. Best sequence: tune lock first, then raise Q, then raise beta and amplitude. Speed still comes from tilt once weight is unloaded.</p>
+        <p>If power drops while changing Q, check Osc Mag, k, and Lock. Lower pump draw can be good when the resonator is storing energy more efficiently; it is bad when lock or oscillator magnitude collapses.</p>
+      </section>
       <ol class="guide-steps">
-        <li><strong>Choose a scenario and warp drive:</strong> use <span class="font-mono">free_play</span> with <span class="font-mono">standard anti-gravity (PLL)</span> for the default sandbox launch.</li>
-        <li><strong>Pick your ship and map:</strong> choose hull type, set craft scale, and set map mode to <span class="font-mono">local</span> (flat) or <span class="font-mono">planetary</span> (globe).</li>
-        <li><strong>Start the session:</strong> click <span class="font-mono">Start Session</span>. Keep <span class="font-mono">Start On Ground</span> enabled for easier takeoff.</li>
-        <li><strong>Apply lift control:</strong> increase amplitude with <span class="font-mono">D</span> and adjust phase bias with <span class="font-mono">W/S</span> until weight ratio nears hover.</li>
-        <li><strong>Shape the oscillator:</strong> use <span class="font-mono">Tune ω0</span>, <span class="font-mono">Q</span>, and <span class="font-mono">Pump β</span> to retune resonance, change losses, and alter spin-up authority.</li>
-        <li><strong>Use plasma only in air:</strong> raise <span class="font-mono">Plasma Sheath</span> to trade extra electrical draw for modest drag reduction and flow-control authority inside an atmosphere.</li>
-        <li><strong>Steer direction:</strong> use <span class="font-mono">Q/E</span> to pick a heading around the planet and <span class="font-mono">I/K</span> to tilt the warp axis away from local vertical.</li>
-        <li><strong>Stabilize flight:</strong> toggle <span class="font-mono">Auto Trim Assist</span> and use preset buttons (Hover, Ascend, Descend) as a baseline.</li>
-        <li><strong>Watch telemetry:</strong> track <span class="font-mono">Weight xg</span>, <span class="font-mono">Lock</span>, <span class="font-mono">Warp X/Y/Z</span>, and <span class="font-mono">Runaway</span> while flying.</li>
-        <li><strong>Recover quickly:</strong> press <span class="font-mono">Space</span> for lock assist, <span class="font-mono">P</span> to pause, and <span class="font-mono">R</span> to reset.</li>
+        <li><strong>Launch:</strong> choose warp drive, ship, planet, and map; then start the session.</li>
+        <li><strong>Unweight:</strong> raise amplitude and adjust phase until Weight xg approaches hover or goes negative.</li>
+        <li><strong>Tune:</strong> use Recover Lock first. Keep Lock high and Phase Error small before pushing power.</li>
+        <li><strong>Store energy:</strong> raise Q and watch Osc Mag and k. If those collapse, back down and recover lock.</li>
+        <li><strong>Feed the cavity:</strong> raise Pump beta after lock is stable. Watch Drive, Osc Mag, and k together.</li>
+        <li><strong>Fly:</strong> use yaw for heading and tilt to convert lift authority into lateral fall.</li>
+        <li><strong>Assist:</strong> use Hover, Normal g, Ascend, and Descend for baseline trim; use Capture to bring targets to the current state.</li>
+        <li><strong>Unlocked sliders:</strong> when a vector control lock is off, that slider becomes a live indicator and follows the sim.</li>
       </ol>
       <div class="guide-modal-footer">
-        <button data-guide-close class="lab-btn lab-btn-primary">Start Flying</button>
+        <button data-guide-close class="lab-btn lab-btn-primary" type="button">Start Flying</button>
       </div>
     </div>
   </div>

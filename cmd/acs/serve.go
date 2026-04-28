@@ -116,6 +116,7 @@ func serveCmd(args []string) error {
 	mux.HandleFunc("/api/game/start", s.handleGameStart)
 	mux.HandleFunc("/api/game/step", s.handleGameStep)
 	mux.HandleFunc("/api/game/stop", s.handleGameStop)
+	mux.HandleFunc("/api/game/calibration", s.handleGameCalibration)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))

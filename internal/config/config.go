@@ -35,14 +35,20 @@ type BodyConfig struct {
 }
 
 type CraftConfig struct {
-	Mass            float64    `json:"mass"`
-	ShipType        string     `json:"ship_type"`
-	InertiaDiagonal [3]float64 `json:"inertia_diagonal"`
-	Position        [3]float64 `json:"position"`
-	Velocity        [3]float64 `json:"velocity"`
-	Orientation     [4]float64 `json:"orientation"`
-	AngularVelocity [3]float64 `json:"angular_velocity"`
-	Drag            DragConfig `json:"drag"`
+	Mass            float64          `json:"mass"`
+	ShipType        string           `json:"ship_type"`
+	InertiaDiagonal [3]float64       `json:"inertia_diagonal"`
+	Position        [3]float64       `json:"position"`
+	Velocity        [3]float64       `json:"velocity"`
+	Orientation     [4]float64       `json:"orientation"`
+	AngularVelocity [3]float64       `json:"angular_velocity"`
+	Drag            DragConfig       `json:"drag"`
+	Aero            AeroConfig       `json:"aero"`
+	Propulsion      PropulsionConfig `json:"propulsion"`
+	EM              EMConfig         `json:"em"`
+	Thermal         ThermalConfig    `json:"thermal"`
+	Structural      StructuralConfig `json:"structural"`
+	Pilot           PilotConfig      `json:"pilot"`
 }
 
 type DragConfig struct {
@@ -59,6 +65,7 @@ type PlasmaSheathConfig struct {
 	AuthoritySpeed   float64 `json:"authority_speed"`
 	VelocityFalloff  float64 `json:"velocity_falloff"`
 	PowerPerArea     float64 `json:"power_per_area"`
+	IonizationGain   float64 `json:"ionization_gain"`
 }
 
 type EnvironmentConfig struct {
@@ -66,13 +73,76 @@ type EnvironmentConfig struct {
 	PrimaryBodyIdx int              `json:"primary_body_index"`
 	Atmosphere     AtmosphereConfig `json:"atmosphere"`
 	Ground         GroundConfig     `json:"ground"`
+	EField         [3]float64       `json:"e_field"`
+	BField         [3]float64       `json:"b_field"`
 }
 
 type AtmosphereConfig struct {
-	Enabled     bool       `json:"enabled"`
-	Rho0        float64    `json:"rho0"`
-	ScaleHeight float64    `json:"scale_height"`
-	Wind        [3]float64 `json:"wind"`
+	Enabled      bool                    `json:"enabled"`
+	Rho0         float64                 `json:"rho0"`
+	ScaleHeight  float64                 `json:"scale_height"`
+	Wind         [3]float64              `json:"wind"`
+	Temperature0 float64                 `json:"temperature0"`
+	LapseRate    float64                 `json:"lapse_rate"`
+	Gamma        float64                 `json:"gamma"`
+	GasConstant  float64                 `json:"gas_constant"`
+	Layers       []AtmosphereLayerConfig `json:"layers"`
+}
+
+type AtmosphereLayerConfig struct {
+	MinAlt       float64 `json:"min_alt"`
+	MaxAlt       float64 `json:"max_alt"`
+	Rho0         float64 `json:"rho0"`
+	ScaleHeight  float64 `json:"scale_height"`
+	Temperature0 float64 `json:"temperature0"`
+	LapseRate    float64 `json:"lapse_rate"`
+	Gamma        float64 `json:"gamma"`
+	GasConstant  float64 `json:"gas_constant"`
+}
+
+type AeroConfig struct {
+	Enabled  bool    `json:"enabled"`
+	Cl0      float64 `json:"cl0"`
+	ClAlpha  float64 `json:"cl_alpha"`
+	ClMax    float64 `json:"cl_max"`
+	StallAoA float64 `json:"stall_aoa"`
+}
+
+type PropulsionConfig struct {
+	Enabled   bool    `json:"enabled"`
+	Throttle  float64 `json:"throttle"`
+	MaxThrust float64 `json:"max_thrust"`
+}
+
+type EMConfig struct {
+	Enabled bool    `json:"enabled"`
+	ChargeC float64 `json:"charge_c"`
+}
+
+type ThermalConfig struct {
+	Enabled               bool    `json:"enabled"`
+	HeatTransferCoeff     float64 `json:"heat_transfer_coeff"`
+	RadiativeCoeff        float64 `json:"radiative_coeff"`
+	Emissivity            float64 `json:"emissivity"`
+	MaxSkinTempK          float64 `json:"max_skin_temp_k"`
+	InitialSkinTempK      float64 `json:"initial_skin_temp_k"`
+	ReferenceHeatCapacity float64 `json:"reference_heat_capacity"`
+}
+
+type StructuralConfig struct {
+	Enabled        bool    `json:"enabled"`
+	MaxGLoad       float64 `json:"max_g_load"`
+	MaxDynamicQPa  float64 `json:"max_dynamic_q_pa"`
+	MaxHeatFluxWm2 float64 `json:"max_heat_flux_w_m2"`
+}
+
+type PilotConfig struct {
+	Enabled          bool    `json:"enabled"`
+	MaxGPositive     float64 `json:"max_g_positive"`
+	MaxGNegative     float64 `json:"max_g_negative"`
+	MaxGLongitudinal float64 `json:"max_g_longitudinal"`
+	MaxGLateral      float64 `json:"max_g_lateral"`
+	RecoveryTauS     float64 `json:"recovery_tau_s"`
 }
 
 type GroundConfig struct {
@@ -298,7 +368,47 @@ func (s Scenario) CraftRuntime() physics.Craft {
 				AuthoritySpeed:   s.Craft.Drag.Plasma.AuthoritySpeed,
 				VelocityFalloff:  s.Craft.Drag.Plasma.VelocityFalloff,
 				PowerPerArea:     s.Craft.Drag.Plasma.PowerPerArea,
+				IonizationGain:   s.Craft.Drag.Plasma.IonizationGain,
 			},
+		},
+		Aero: physics.AeroModel{
+			Enabled:  s.Craft.Aero.Enabled,
+			Cl0:      s.Craft.Aero.Cl0,
+			ClAlpha:  s.Craft.Aero.ClAlpha,
+			ClMax:    s.Craft.Aero.ClMax,
+			StallAoA: s.Craft.Aero.StallAoA,
+		},
+		Propulsion: physics.PropulsionModel{
+			Enabled:   s.Craft.Propulsion.Enabled,
+			Throttle:  s.Craft.Propulsion.Throttle,
+			MaxThrust: s.Craft.Propulsion.MaxThrust,
+		},
+		EM: physics.EMModel{
+			Enabled: s.Craft.EM.Enabled,
+			ChargeC: s.Craft.EM.ChargeC,
+		},
+		Thermal: physics.ThermalModel{
+			Enabled:               s.Craft.Thermal.Enabled,
+			HeatTransferCoeff:     s.Craft.Thermal.HeatTransferCoeff,
+			RadiativeCoeff:        s.Craft.Thermal.RadiativeCoeff,
+			Emissivity:            s.Craft.Thermal.Emissivity,
+			MaxSkinTempK:          s.Craft.Thermal.MaxSkinTempK,
+			InitialSkinTempK:      s.Craft.Thermal.InitialSkinTempK,
+			ReferenceHeatCapacity: s.Craft.Thermal.ReferenceHeatCapacity,
+		},
+		Structural: physics.StructuralModel{
+			Enabled:        s.Craft.Structural.Enabled,
+			MaxGLoad:       s.Craft.Structural.MaxGLoad,
+			MaxDynamicQPa:  s.Craft.Structural.MaxDynamicQPa,
+			MaxHeatFluxWm2: s.Craft.Structural.MaxHeatFluxWm2,
+		},
+		Pilot: physics.PilotModel{
+			Enabled:          s.Craft.Pilot.Enabled,
+			MaxGPositive:     s.Craft.Pilot.MaxGPositive,
+			MaxGNegative:     s.Craft.Pilot.MaxGNegative,
+			MaxGLongitudinal: s.Craft.Pilot.MaxGLongitudinal,
+			MaxGLateral:      s.Craft.Pilot.MaxGLateral,
+			RecoveryTauS:     s.Craft.Pilot.RecoveryTauS,
 		},
 	}
 }
@@ -307,10 +417,15 @@ func (s Scenario) EnvironmentRuntime() physics.Environment {
 	return physics.Environment{
 		G: s.Environment.G,
 		Atmosphere: physics.Atmosphere{
-			Enabled:     s.Environment.Atmosphere.Enabled,
-			Rho0:        s.Environment.Atmosphere.Rho0,
-			ScaleHeight: s.Environment.Atmosphere.ScaleHeight,
-			Wind:        v3(s.Environment.Atmosphere.Wind),
+			Enabled:      s.Environment.Atmosphere.Enabled,
+			Rho0:         s.Environment.Atmosphere.Rho0,
+			ScaleHeight:  s.Environment.Atmosphere.ScaleHeight,
+			Wind:         v3(s.Environment.Atmosphere.Wind),
+			Temperature0: s.Environment.Atmosphere.Temperature0,
+			LapseRate:    s.Environment.Atmosphere.LapseRate,
+			Gamma:        s.Environment.Atmosphere.Gamma,
+			GasConstant:  s.Environment.Atmosphere.GasConstant,
+			Layers:       atmosphereLayersRuntime(s.Environment.Atmosphere.Layers),
 		},
 		Ground: physics.GroundContact{
 			Enabled:      s.Environment.Ground.Enabled,
@@ -319,7 +434,29 @@ func (s Scenario) EnvironmentRuntime() physics.Environment {
 			SurfaceEps:   s.Environment.Ground.SurfaceEps,
 			TangentialMu: s.Environment.Ground.TangentialMu,
 		},
+		EField: v3(s.Environment.EField),
+		BField: v3(s.Environment.BField),
 	}
+}
+
+func atmosphereLayersRuntime(in []AtmosphereLayerConfig) []physics.AtmosphereLayer {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]physics.AtmosphereLayer, 0, len(in))
+	for _, l := range in {
+		out = append(out, physics.AtmosphereLayer{
+			MinAlt:       l.MinAlt,
+			MaxAlt:       l.MaxAlt,
+			Rho0:         l.Rho0,
+			ScaleHeight:  l.ScaleHeight,
+			Temperature0: l.Temperature0,
+			LapseRate:    l.LapseRate,
+			Gamma:        l.Gamma,
+			GasConstant:  l.GasConstant,
+		})
+	}
+	return out
 }
 
 func (s Scenario) CouplerRuntime() coupler.Params {

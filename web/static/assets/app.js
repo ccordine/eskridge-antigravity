@@ -1585,70 +1585,52 @@ function mountRecyclr(root = null, options = {}) {
 
 },{}],2:[function(require,module,exports){
 const Recyclr = require('recyclrjs');
+const { createInitialState } = require('./lab/state');
+const {
+  sampleSignature: invariantSampleSignature,
+  validateSample,
+  validateMonotonicTransition
+} = require('./lab/invariants');
 
 const TWO_PI = Math.PI * 2;
 const CRAFT_SCALE_MIN = 1.0;
 const CRAFT_SCALE_MAX = 6.0;
 const CRAFT_LAZAR_SPAN_M = 15.8;
 const METERS_TO_FEET = 3.280839895;
-const OSC_OMEGA_MIN = 40;
-const OSC_OMEGA_MAX = 160;
-const OSC_Q_MIN = 5;
-const OSC_Q_MAX = 240;
-const OSC_BETA_MIN = 0.2;
-const OSC_BETA_MAX = 4.0;
+const OSC_OMEGA_MIN = 0.1;
+const OSC_OMEGA_MAX = 1000000;
+const OSC_Q_MIN = 0.01;
+const OSC_Q_MAX = 1000000;
+const OSC_BETA_MIN = 0.0;
+const OSC_BETA_MAX = 1000000;
 const PLASMA_MIN = 0.0;
 const PLASMA_MAX = 1.0;
+const BROWSER_FRAME_INTERVAL_MS = 1000 / 30;
 
-const state = {
-  scenarios: [],
-  scenariosLoading: false,
-  mounted: false,
-  labRoot: null,
-  refs: null,
-  renderer: null,
-  game: {
-    sessionId: '',
-    dt: 1 / 120,
-    running: false,
-    paused: false,
-    requestInFlight: false,
-    rafId: 0,
-    lastFrameTs: 0,
-    accumulator: 0,
-    latest: null,
-    initialEnergy: NaN,
-    trailTop: [],
-    trailSide: [],
-    trail3D: [],
-    maxTrail: 900,
-    mapMode: 'planetary',
-    speedometerScale: 400
-  },
-  input: {
-    keys: Object.create(null),
-    lockAssist: true,
-    activeInput: 'none',
-    lastEffect: 'none',
-    lastNudge: 'none',
-    lastControl: {
-      mode: 'manual',
-      manualAmp: 0,
-      manualPhi: 0,
-      manualYaw: 0,
-      manualPitch: 0,
-      autoAmp: 0,
-      autoPhi: 0,
-      autoYaw: 0,
-      autoPitch: 0,
-      finalAmp: 0,
-      finalPhi: 0,
-      finalYaw: 0,
-      finalPitch: 0
+const state = createInitialState();
+
+async function fetchCalibrationSummary() {
+  try {
+    const res = await fetch('/api/game/calibration', { credentials: 'same-origin' });
+    if (!res.ok) {
+      throw new Error(`calibration ${res.status}`);
     }
-  },
-  exporting: false
-};
+    const payload = await res.json();
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    if (!items.length) {
+      setStat('calibration_summary', 'no data');
+      return;
+    }
+    const parts = items.map((it) => `${String(it.preset || '?')}:${formatCompactNumber(it.surface_g, 2)}g`);
+    setStat('calibration_summary', parts.join(' | '));
+  } catch (err) {
+    setStat('calibration_summary', `error: ${err.message || 'failed'}`);
+  }
+}
+
+function activeScenarioName() {
+  return 'free_play';
+}
 
 class DualViewRenderer {
   constructor(topCanvas, sideCanvas, worldCanvas) {
@@ -3424,84 +3406,6 @@ function normalizeScenario(item) {
   };
 }
 
-async function loadScenarios(options = {}) {
-  const force = Boolean(options && options.force);
-  if (state.scenariosLoading) {
-    return state.scenarios;
-  }
-  if (!force && state.scenarios.length > 0) {
-    return state.scenarios;
-  }
-
-  state.scenariosLoading = true;
-  try {
-    const res = await fetch('/api/scenarios', { credentials: 'same-origin' });
-    if (!res.ok) {
-      throw new Error('failed to load scenarios');
-    }
-    const payload = await res.json();
-    state.scenarios = Array.isArray(payload) ? payload.map(normalizeScenario).filter(Boolean) : [];
-  } catch (_) {
-    if (!state.scenarios.length) {
-      state.scenarios = [];
-    }
-  } finally {
-    state.scenariosLoading = false;
-  }
-  return state.scenarios;
-}
-
-function hydrateScenarioSelect(root) {
-  const select = root.querySelector('[data-scenario-select]');
-  if (!select) {
-    return;
-  }
-
-  const preserve = select.value;
-  select.innerHTML = '';
-
-  if (!state.scenarios.length) {
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = state.scenariosLoading ? 'Loading scenarios...' : 'No scenarios available';
-    select.appendChild(opt);
-    select.disabled = true;
-    return;
-  }
-
-  select.disabled = false;
-  for (const item of state.scenarios) {
-    const opt = document.createElement('option');
-    const dtLabel = Number.isFinite(item.dt) && item.dt > 0 ? `${item.dt}` : '?';
-    const durationLabel = Number.isFinite(item.duration) && item.duration > 0 ? `${item.duration}` : '?';
-    const couplerLabel = item.couplerEnabled ? 'coupler:on' : 'coupler:off';
-    opt.value = item.name;
-    opt.textContent = `${item.name} • ${item.gravityModel} • ${couplerLabel} • dt=${dtLabel}s • duration=${durationLabel}s`;
-    select.appendChild(opt);
-  }
-
-  if (preserve && Array.from(select.options).some((opt) => opt.value === preserve)) {
-    select.value = preserve;
-  } else if (select.options.length > 0) {
-    const freePlay = Array.from(select.options).find((opt) => opt.value === 'free_play');
-    select.value = freePlay ? freePlay.value : select.options[0].value;
-  }
-}
-
-function selectedScenario(root) {
-  const selected = root.querySelector('[data-scenario-select]')?.value || '';
-  if (selected) {
-    return selected;
-  }
-  if (state.scenarios.some((item) => item.name === 'free_play')) {
-    return 'free_play';
-  }
-  if (state.scenarios.length > 0) {
-    return state.scenarios[0].name;
-  }
-  return 'free_play';
-}
-
 function selectedShipType() {
   const ship = String(state.refs?.shipType?.value || 'saucer').toLowerCase();
   if (ship === 'sphere' || ship === 'egg' || ship === 'pyramid' || ship === 'flat_triangle') {
@@ -3514,25 +3418,70 @@ function selectedShipType() {
 }
 
 function selectedWarpDrive() {
-  const drive = String(state.refs?.warpDrive?.value || 'standard').toLowerCase();
-  if (drive === 'off') {
-    return 'off';
+  const drive = String(state.refs?.warpDrive?.value || 'resonant_pll').toLowerCase();
+  if (drive === 'geodesic' || drive === 'inertial_gradient' || drive === 'plasma_mhd' || drive === 'alcubierre_ag' || drive === 'resonant_pll') {
+    return drive;
   }
-  if (drive === 'scenario_default' || drive === 'default' || drive === 'scenario') {
-    return 'scenario_default';
-  }
-  return 'standard';
+  return 'resonant_pll';
 }
 
 function warpDriveLabel(value) {
   switch (String(value || '').toLowerCase()) {
-    case 'off':
-      return 'coupler off';
-    case 'scenario_default':
-      return 'scenario default';
+    case 'geodesic':
+      return 'geodesic drive';
+    case 'inertial_gradient':
+      return 'inertial-gradient drive';
+    case 'plasma_mhd':
+    case 'plasma_sheath':
+      return 'plasma-mhd assist drive';
+    case 'alcubierre_ag':
+    case 'alcubierre':
+      return 'alcubierre-ag drive';
+    case 'inertial_vector':
+      return 'inertial-gradient drive';
+    case 'high_q_resonant':
+    case 'pll_standard':
+      return 'resonant pll drive';
     default:
-      return 'standard warp';
+      return 'resonant pll drive';
   }
+}
+
+function warpDriveUiDefaults(drive) {
+  switch (String(drive || '').toLowerCase()) {
+    case 'alcubierre_ag':
+      return { omega: 80, q: 420, beta: 4.2, plasma: 0.10, throttle: 0.34, emCharge: 1800, eField: 4200, bField: 0.22 };
+    case 'geodesic':
+      return { omega: 80, q: 220, beta: 2.2, plasma: 0.08, throttle: 0.18, emCharge: 0, eField: 1200, bField: 0.0 };
+    case 'inertial_gradient':
+      return { omega: 80, q: 320, beta: 3.1, plasma: 0.15, throttle: 0.26, emCharge: 0, eField: 2200, bField: 0.08 };
+    case 'plasma_mhd':
+      return { omega: 80, q: 180, beta: 2.6, plasma: 0.72, throttle: 0.20, emCharge: 600, eField: 1800, bField: 0.12 };
+    default:
+      return { omega: 80, q: 120, beta: 1.8, plasma: 0.05, throttle: 0.12, emCharge: 0, eField: 900, bField: 0.0 };
+  }
+}
+
+function applyWarpDriveUiDefaults(drive, force = false) {
+  if (!state.refs) {
+    return;
+  }
+  const d = warpDriveUiDefaults(drive);
+  const sample = state.game.latest;
+  const hasLiveSession = Boolean(state.game.running && sample);
+  if (hasLiveSession && !force) {
+    return;
+  }
+  setInputNumber(state.refs.oscOmegaTarget, d.omega, 1);
+  setInputNumber(state.refs.oscQTarget, d.q, 2);
+  setInputNumber(state.refs.oscBetaTarget, d.beta, 3);
+  setInputNumber(state.refs.plasmaTarget, d.plasma, 2);
+  setInputNumber(state.refs.throttleTarget, d.throttle, 2);
+  setInputNumber(state.refs.emChargeTarget, d.emCharge, 1);
+  setInputNumber(state.refs.eFieldTarget, d.eField, 1);
+  setInputNumber(state.refs.bFieldTarget, d.bField, 3);
+  updateControlBarReadouts();
+  updateHUD(state.game.latest);
 }
 
 function currentCraftScale() {
@@ -3570,14 +3519,14 @@ function currentMapMode() {
 
 function selectedPlanetPreset() {
   const preset = String(state.refs?.planetPreset?.value || 'earth').toLowerCase();
-  if (preset === 'earth' || preset === 'moon' || preset === 'mars' || preset === 'venus' || preset === 'jupiter') {
+  if (preset === 'earth' || preset === 'mercury' || preset === 'moon' || preset === 'mars' || preset === 'venus' || preset === 'titan' || preset === 'jupiter' || preset === 'neptune') {
     return preset;
   }
   return 'earth';
 }
 
 function currentPlanetaryCameraMode() {
-  const mode = String(state.refs?.planetaryCamera?.value || 'follow').toLowerCase();
+  const mode = String(state.refs?.planetaryCamera?.value || 'global').toLowerCase();
   if (mode === 'global') {
     return 'global';
   }
@@ -3626,14 +3575,6 @@ function maybeInitLab() {
   }
 
   if (state.labRoot === root) {
-    hydrateScenarioSelect(root);
-    if (!state.scenarios.length && !state.scenariosLoading) {
-      void loadScenarios({ force: true }).then(() => {
-        if (state.labRoot === root) {
-          hydrateScenarioSelect(root);
-        }
-      });
-    }
     return;
   }
 
@@ -3655,7 +3596,6 @@ function maybeInitLab() {
 
   state.refs = {
     status: root.querySelector('[data-game-status]'),
-    scenario: root.querySelector('[data-scenario-select]'),
     warpDrive: root.querySelector('[data-warp-drive]'),
     shipType: root.querySelector('[data-ship-type]'),
     craftScale: root.querySelector('[data-craft-scale]'),
@@ -3678,6 +3618,10 @@ function maybeInitLab() {
     oscQTarget: root.querySelector('[data-osc-q-target]'),
     oscBetaTarget: root.querySelector('[data-osc-beta-target]'),
     plasmaTarget: root.querySelector('[data-plasma-target]'),
+    throttleTarget: root.querySelector('[data-throttle-target]'),
+    emChargeTarget: root.querySelector('[data-em-charge-target]'),
+    eFieldTarget: root.querySelector('[data-e-field-target]'),
+    bFieldTarget: root.querySelector('[data-b-field-target]'),
     autoTrim: root.querySelector('[data-auto-trim]'),
     autoWeight: root.querySelector('[data-auto-weight]'),
     autoVertical: root.querySelector('[data-auto-vertical]'),
@@ -3695,8 +3639,7 @@ function maybeInitLab() {
   state.game.mapMode = currentMapMode();
 
   state.renderer = new DualViewRenderer(state.refs.canvasTop, state.refs.canvasSide, state.refs.canvas3D);
-  state.renderer.setPlanetaryCamera(currentPlanetaryZoom(), currentPlanetaryCameraMode());
-  state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
+  renderLatestSample();
 
   window.addEventListener('resize', () => {
     if (state.renderer) {
@@ -3704,16 +3647,10 @@ function maybeInitLab() {
     }
   }, { once: true });
 
-  hydrateScenarioSelect(root);
-  if (!state.scenarios.length && !state.scenariosLoading) {
-    void loadScenarios({ force: true }).then(() => {
-      if (state.labRoot === root) {
-        hydrateScenarioSelect(root);
-      }
-    });
-  }
   updateControlBarReadouts();
   updateCraftScaleReadout();
+  applyWarpDriveUiDefaults(selectedWarpDrive(), false);
+  void fetchCalibrationSummary();
   setStatus('ready');
   updateHUD(state.game.latest);
   closeGuideModal();
@@ -4098,7 +4035,9 @@ function drawSpeedometer(sample) {
     }
   }
 
-  const needleAngle = start + (sweep * ratio);
+  // Dial arc is drawn clockwise from start->end. Needle needs inverse mapping
+  // so higher speed points toward the high-speed side of the arc.
+  const needleAngle = start + (sweep * (1 - ratio));
   const needleX = cx + (Math.cos(needleAngle) * r * 0.86);
   const needleY = cy + (Math.sin(needleAngle) * r * 0.86);
   ctx.strokeStyle = 'rgba(255, 149, 83, 0.98)';
@@ -4146,6 +4085,14 @@ function setInputNumber(node, value, digits = 3) {
   node.value = value.toFixed(digits);
 }
 
+function setControlCardLive(inputNode, isLive) {
+  const card = inputNode?.closest?.('.lab-control-card');
+  if (!card) {
+    return;
+  }
+  card.classList.toggle('is-live', Boolean(isLive));
+}
+
 function currentOscillatorTargets(sample = state.game.latest) {
   return {
     omega: clampNumber(
@@ -4188,23 +4135,28 @@ function updateControlBarReadouts() {
   if (!state.refs?.controlReadouts) {
     return;
   }
-  const amp = readNumberInput(state.refs?.holdAmpTarget, NaN);
-  const phi = readNumberInput(state.refs?.holdPhiTarget, NaN);
-  const yaw = readNumberInput(state.refs?.holdYawTarget, NaN);
-  const pitch = readNumberInput(state.refs?.holdPitchTarget, NaN);
+  const amp = clampUnit(readNumberInput(state.refs?.holdAmpTarget, 0));
+  const phi = clampUnit(readNumberInput(state.refs?.holdPhiTarget, 0));
+  const yaw = clampUnit(readNumberInput(state.refs?.holdYawTarget, 0));
+  const pitch = clampUnit(readNumberInput(state.refs?.holdPitchTarget, 0));
+  const sample = state.game.latest;
+  const sAmp = Number.parseFloat(sample?.control_amp_target);
+  const sPhi = Number.parseFloat(sample?.control_theta_target);
+  const sYaw = Number.parseFloat(sample?.control_axis_yaw);
+  const sPitch = Number.parseFloat(sample?.control_axis_pitch);
   const osc = currentOscillatorTargets();
 
   if (state.refs.controlReadouts.amp) {
-    state.refs.controlReadouts.amp.textContent = formatNumber(amp, 3);
+    state.refs.controlReadouts.amp.textContent = `L ${formatNumber(amp, 2)} | S ${formatNumber(sAmp, 3)}`;
   }
   if (state.refs.controlReadouts.phi) {
-    state.refs.controlReadouts.phi.textContent = formatNumber(phi, 3);
+    state.refs.controlReadouts.phi.textContent = `L ${formatNumber(phi, 2)} | S ${formatNumber(sPhi, 3)}`;
   }
   if (state.refs.controlReadouts.yaw) {
-    state.refs.controlReadouts.yaw.textContent = formatNumber(yaw, 3);
+    state.refs.controlReadouts.yaw.textContent = `L ${formatNumber(yaw, 2)} | S ${formatNumber(sYaw, 3)}`;
   }
   if (state.refs.controlReadouts.pitch) {
-    state.refs.controlReadouts.pitch.textContent = formatNumber(pitch, 3);
+    state.refs.controlReadouts.pitch.textContent = `L ${formatNumber(pitch, 2)} | S ${formatNumber(sPitch, 3)}`;
   }
   if (state.refs.controlReadouts.omega) {
     state.refs.controlReadouts.omega.textContent = formatNumber(osc.omega, 2);
@@ -4218,9 +4170,32 @@ function updateControlBarReadouts() {
   if (state.refs.controlReadouts.plasma) {
     state.refs.controlReadouts.plasma.textContent = formatNumber(currentPlasmaTarget(), 3);
   }
+  if (state.refs.controlReadouts.throttle) {
+    state.refs.controlReadouts.throttle.textContent = formatNumber(readNumberInput(state.refs?.throttleTarget, Number.parseFloat(sample?.control_throttle_target)), 3);
+  }
+  if (state.refs.controlReadouts.emcharge) {
+    state.refs.controlReadouts.emcharge.textContent = formatNumber(readNumberInput(state.refs?.emChargeTarget, Number.parseFloat(sample?.control_em_charge_target)), 1);
+  }
+  if (state.refs.controlReadouts.efield) {
+    state.refs.controlReadouts.efield.textContent = formatNumber(readNumberInput(state.refs?.eFieldTarget, Number.parseFloat(sample?.control_e_field_target)), 1);
+  }
+  if (state.refs.controlReadouts.bfield) {
+    state.refs.controlReadouts.bfield.textContent = formatNumber(readNumberInput(state.refs?.bFieldTarget, Number.parseFloat(sample?.control_b_field_target)), 3);
+  }
+
+  setControlCardLive(state.refs?.holdAmpTarget, !state.refs?.holdAmpEnabled?.checked);
+  setControlCardLive(state.refs?.holdPhiTarget, !state.refs?.holdPhiEnabled?.checked);
+  setControlCardLive(state.refs?.holdYawTarget, !state.refs?.holdYawEnabled?.checked);
+  setControlCardLive(state.refs?.holdPitchTarget, !state.refs?.holdPitchEnabled?.checked);
 }
 
 function centerControlBars() {
+  if (state.refs?.holdAmpTarget) {
+    state.refs.holdAmpTarget.value = '0';
+  }
+  if (state.refs?.holdPhiTarget) {
+    state.refs.holdPhiTarget.value = '0';
+  }
   if (state.refs?.holdYawTarget) {
     state.refs.holdYawTarget.value = '0';
   }
@@ -4231,19 +4206,93 @@ function centerControlBars() {
   setStatus('warp setpoint centered');
 }
 
+function maybeSpringReturnLever(target) {
+  if (!(target instanceof Element)) {
+    return;
+  }
+  if (target.matches('[data-hold-amp-target]') && !state.refs?.holdAmpEnabled?.checked) {
+    target.value = '0';
+  } else if (target.matches('[data-hold-phi-target]') && !state.refs?.holdPhiEnabled?.checked) {
+    target.value = '0';
+  } else if (target.matches('[data-hold-yaw-target]') && !state.refs?.holdYawEnabled?.checked) {
+    target.value = '0';
+  } else if (target.matches('[data-hold-pitch-target]') && !state.refs?.holdPitchEnabled?.checked) {
+    target.value = '0';
+  } else {
+    return;
+  }
+  updateControlBarReadouts();
+}
+
 function syncControlBarsToSample(sample) {
   if (!sample) {
     return;
   }
-  setInputNumber(state.refs?.holdAmpTarget, Number.parseFloat(sample.control_amp_target), 3);
-  setInputNumber(state.refs?.holdPhiTarget, Number.parseFloat(sample.control_theta_target), 3);
+  setInputNumber(state.refs?.holdAmpTarget, 0, 2);
+  setInputNumber(state.refs?.holdPhiTarget, 0, 2);
+  setInputNumber(state.refs?.holdYawTarget, 0, 2);
+  setInputNumber(state.refs?.holdPitchTarget, 0, 2);
   setInputNumber(state.refs?.oscOmegaTarget, Number.parseFloat(sample.control_omega_target), 1);
   setInputNumber(state.refs?.oscQTarget, Number.parseFloat(sample.control_q_target), 0);
   setInputNumber(state.refs?.oscBetaTarget, Number.parseFloat(sample.control_beta_target), 2);
   setInputNumber(state.refs?.plasmaTarget, Number.parseFloat(sample.control_plasma_target), 2);
-  setInputNumber(state.refs?.holdYawTarget, Number.parseFloat(sample.control_axis_yaw), 3);
-  setInputNumber(state.refs?.holdPitchTarget, Number.parseFloat(sample.control_axis_pitch), 3);
+  setInputNumber(state.refs?.throttleTarget, Number.parseFloat(sample.control_throttle_target), 2);
+  setInputNumber(state.refs?.emChargeTarget, Number.parseFloat(sample.control_em_charge_target), 1);
+  setInputNumber(state.refs?.eFieldTarget, Number.parseFloat(sample.control_e_field_target), 1);
+  setInputNumber(state.refs?.bFieldTarget, Number.parseFloat(sample.control_b_field_target), 3);
   updateControlBarReadouts();
+}
+
+function syncUnlockedControlBarsToSample(sample) {
+  if (!sample) {
+    return;
+  }
+  updateControlBarReadouts();
+}
+
+function applyResonatorPreset(name) {
+  const key = String(name || '').toLowerCase();
+  const sample = state.game.latest;
+  const currentOmega = Number.parseFloat(sample?.control_omega_target);
+  const omega = Number.isFinite(currentOmega) ? currentOmega : 80;
+  const currentQ = Number.parseFloat(sample?.control_q_target);
+  const currentBeta = Number.parseFloat(sample?.control_beta_target);
+  const currentAmp = Number.parseFloat(sample?.control_amp_target);
+  const q0 = Number.isFinite(currentQ) ? currentQ : 45;
+  const beta0 = Number.isFinite(currentBeta) ? currentBeta : 1.2;
+  const amp0 = Number.isFinite(currentAmp) ? currentAmp : 2.5;
+
+  if (!state.refs) {
+    return;
+  }
+
+  if (key === 'recover') {
+    setInputNumber(state.refs.oscOmegaTarget, Math.max(OSC_OMEGA_MIN, omega * 0.98), 1);
+    setInputNumber(state.refs.oscQTarget, Math.max(OSC_Q_MIN, q0 * 0.75), 2);
+    setInputNumber(state.refs.oscBetaTarget, Math.max(OSC_BETA_MIN, beta0 * 0.85), 3);
+    setInputNumber(state.refs.holdAmpTarget, 0.35, 2);
+    setStatus('resonator preset: recover lock');
+  } else if (key === 'build') {
+    setInputNumber(state.refs.oscOmegaTarget, omega, 1);
+    setInputNumber(state.refs.oscQTarget, Math.min(OSC_Q_MAX, Math.max(5, q0 * 1.6)), 2);
+    setInputNumber(state.refs.oscBetaTarget, Math.min(OSC_BETA_MAX, Math.max(0.2, beta0 * 1.45)), 3);
+    setInputNumber(state.refs.holdAmpTarget, Math.min(1, Math.max(0.45, amp0 * 0.08)), 2);
+    setStatus('resonator preset: build Q');
+  } else if (key === 'push') {
+    setInputNumber(state.refs.oscOmegaTarget, Math.min(OSC_OMEGA_MAX, omega * 1.05), 1);
+    setInputNumber(state.refs.oscQTarget, Math.min(OSC_Q_MAX, Math.max(8, q0 * 2.4)), 2);
+    setInputNumber(state.refs.oscBetaTarget, Math.min(OSC_BETA_MAX, Math.max(0.3, beta0 * 2.1)), 3);
+    setInputNumber(state.refs.holdAmpTarget, Math.min(1, Math.max(0.65, amp0 * 0.12)), 2);
+    setStatus('resonator preset: push power');
+  }
+
+  if (key === 'recover' || key === 'build' || key === 'push') {
+    if (state.refs.holdAmpEnabled) {
+      state.refs.holdAmpEnabled.checked = true;
+    }
+    updateControlBarReadouts();
+    updateHUD(sample);
+  }
 }
 
 function nudgeRangeInput(node, step, min, max, digits = 3) {
@@ -4262,35 +4311,35 @@ function nudgeControlBarsFromKey(key, shift = false) {
   let label = '';
   switch (key) {
     case 'a':
-      result = nudgeRangeInput(state.refs?.holdAmpTarget, -0.2 * coarse, 0, 24, 3);
+      result = nudgeRangeInput(state.refs?.holdAmpTarget, -0.08 * coarse, -1, 1, 2);
       label = 'amp';
       break;
     case 'd':
-      result = nudgeRangeInput(state.refs?.holdAmpTarget, 0.2 * coarse, 0, 24, 3);
+      result = nudgeRangeInput(state.refs?.holdAmpTarget, 0.08 * coarse, -1, 1, 2);
       label = 'amp';
       break;
     case 's':
-      result = nudgeRangeInput(state.refs?.holdPhiTarget, -0.08 * coarse, -Math.PI, Math.PI, 3);
+      result = nudgeRangeInput(state.refs?.holdPhiTarget, -0.08 * coarse, -1, 1, 2);
       label = 'phase';
       break;
     case 'w':
-      result = nudgeRangeInput(state.refs?.holdPhiTarget, 0.08 * coarse, -Math.PI, Math.PI, 3);
+      result = nudgeRangeInput(state.refs?.holdPhiTarget, 0.08 * coarse, -1, 1, 2);
       label = 'phase';
       break;
     case 'q':
-      result = nudgeRangeInput(state.refs?.holdYawTarget, -0.06 * coarse, -Math.PI, Math.PI, 3);
+      result = nudgeRangeInput(state.refs?.holdYawTarget, -0.08 * coarse, -1, 1, 2);
       label = 'yaw';
       break;
     case 'e':
-      result = nudgeRangeInput(state.refs?.holdYawTarget, 0.06 * coarse, -Math.PI, Math.PI, 3);
+      result = nudgeRangeInput(state.refs?.holdYawTarget, 0.08 * coarse, -1, 1, 2);
       label = 'yaw';
       break;
     case 'k':
-      result = nudgeRangeInput(state.refs?.holdPitchTarget, -0.05 * coarse, -1.53, 1.53, 3);
+      result = nudgeRangeInput(state.refs?.holdPitchTarget, -0.08 * coarse, -1, 1, 2);
       label = 'pitch';
       break;
     case 'i':
-      result = nudgeRangeInput(state.refs?.holdPitchTarget, 0.05 * coarse, -1.53, 1.53, 3);
+      result = nudgeRangeInput(state.refs?.holdPitchTarget, 0.08 * coarse, -1, 1, 2);
       label = 'pitch';
       break;
     default:
@@ -4310,7 +4359,7 @@ function releaseAllKeys() {
   for (const key of Object.keys(keys)) {
     keys[key] = false;
   }
-  state.input.activeInput = `locks:[A ${state.refs?.holdAmpEnabled?.checked ? 'on' : 'off'} Φ ${state.refs?.holdPhiEnabled?.checked ? 'on' : 'off'} Y ${state.refs?.holdYawEnabled?.checked ? 'on' : 'off'} P ${state.refs?.holdPitchEnabled?.checked ? 'on' : 'off'}] | targets:[A ${formatNumber(readNumberInput(state.refs?.holdAmpTarget, NaN), 3)} Φ ${formatNumber(readNumberInput(state.refs?.holdPhiTarget, NaN), 3)} Y ${formatNumber(readNumberInput(state.refs?.holdYawTarget, NaN), 3)} P ${formatNumber(readNumberInput(state.refs?.holdPitchTarget, NaN), 3)}] | ${oscillatorTargetSummary()} | final:[A 0.00 Φ 0.00 Y 0.00 P 0.00] | nudge:${state.input.lastNudge || 'none'}`;
+  state.input.activeInput = `locks:[A ${state.refs?.holdAmpEnabled?.checked ? 'on' : 'off'} Φ ${state.refs?.holdPhiEnabled?.checked ? 'on' : 'off'} Y ${state.refs?.holdYawEnabled?.checked ? 'on' : 'off'} P ${state.refs?.holdPitchEnabled?.checked ? 'on' : 'off'}] | levers:[A ${formatNumber(readNumberInput(state.refs?.holdAmpTarget, NaN), 2)} Φ ${formatNumber(readNumberInput(state.refs?.holdPhiTarget, NaN), 2)} Y ${formatNumber(readNumberInput(state.refs?.holdYawTarget, NaN), 2)} P ${formatNumber(readNumberInput(state.refs?.holdPitchTarget, NaN), 2)}] | ${oscillatorTargetSummary()} | final:[A 0.00 Φ 0.00 Y 0.00 P 0.00] | nudge:${state.input.lastNudge || 'none'}`;
 }
 
 function captureCurrentTargets() {
@@ -4328,6 +4377,10 @@ function applyAssistPreset(name) {
   if (!state.refs) {
     return;
   }
+  const sample = state.game.latest;
+  const vertical = localVerticalMetrics(sample);
+  const weightNow = Number.isFinite(vertical?.ratio) ? vertical.ratio : 1.0;
+  const vzNow = Number.isFinite(sample?.vertical_vel) ? sample.vertical_vel : 0.0;
   state.input.lockAssist = true;
   if (state.refs.autoTrim) {
     state.refs.autoTrim.checked = true;
@@ -4345,13 +4398,13 @@ function applyAssistPreset(name) {
       setStatus('assist preset: normal-g');
       break;
     case 'ascend':
-      setInputNumber(state.refs.autoWeight, -0.15, 2);
-      setInputNumber(state.refs.autoVertical, 4.0, 2);
+      setInputNumber(state.refs.autoWeight, Math.min(weightNow - 0.8, -0.35), 2);
+      setInputNumber(state.refs.autoVertical, Math.max(vzNow + 120.0, 120.0), 2);
       setStatus('assist preset: ascend');
       break;
     case 'descend':
-      setInputNumber(state.refs.autoWeight, 1.2, 2);
-      setInputNumber(state.refs.autoVertical, -3.0, 2);
+      setInputNumber(state.refs.autoWeight, Math.max(weightNow + 0.9, 1.4), 2);
+      setInputNumber(state.refs.autoVertical, Math.min(vzNow - 120.0, -120.0), 2);
       setStatus('assist preset: descend');
       break;
     default:
@@ -4384,6 +4437,13 @@ function updateHUD(sample) {
     setStat('view_altitude', '-');
     setStat('view_weight', '-');
     setStat('view_lock', state.input.lockAssist ? 'cmd on' : '-');
+    setStat('view_lock_sub', 'sig na');
+    setStat('res_lock_mini', '-');
+    setStat('res_phase_mini', '-');
+    setStat('res_osc_mini', '-');
+    setStat('res_k_mini', '-');
+    setStat('res_c_mini', '-');
+    setStat('res_power_mini', '-');
     return;
   }
 
@@ -4393,9 +4453,7 @@ function updateHUD(sample) {
   setStat('speed', `${formatNumber(sample.speed, 2)} m/s`);
   setStat('vertical', `${formatNumber(sample.vertical_vel, 2)} m/s`);
   const modelLabel = sample.warp_drive
-    ? (String(sample.warp_drive).toLowerCase() === 'scenario_default'
-      ? `${sample.gravity_model || '-'} • scenario default`
-      : `${warpDriveLabel(sample.warp_drive)} • ${sample.gravity_model || '-'}${sample.coupler_enabled ? '' : ' off'}`)
+    ? `${warpDriveLabel(sample.warp_drive)} • ${sample.gravity_model || '-'}${sample.coupler_enabled ? '' : ' off'}`
     : (sample.coupler_enabled
       ? `${sample.gravity_model || '-'} (coupler on)`
       : `${sample.gravity_model || '-'} (coupler off)`);
@@ -4403,6 +4461,18 @@ function updateHUD(sample) {
   setStat('ship', String(sample.ship_type || 'saucer').toLowerCase());
   setStat('planet', String(sample.primary_name || selectedPlanetPreset()).toLowerCase());
   setStat('map_mode', currentMapMode());
+  const drive = selectedWarpDrive();
+  const qStaged = readNumberInput(state.refs?.oscQTarget, Number.parseFloat(sample?.control_q_target));
+  const betaStaged = readNumberInput(state.refs?.oscBetaTarget, Number.parseFloat(sample?.control_beta_target));
+  const plasmaStaged = readNumberInput(state.refs?.plasmaTarget, Number.parseFloat(sample?.control_plasma_target));
+  const throttleStaged = readNumberInput(state.refs?.throttleTarget, Number.parseFloat(sample?.control_throttle_target));
+  const emChargeStaged = readNumberInput(state.refs?.emChargeTarget, Number.parseFloat(sample?.control_em_charge_target));
+  const eFieldStaged = readNumberInput(state.refs?.eFieldTarget, Number.parseFloat(sample?.control_e_field_target));
+  const bFieldStaged = readNumberInput(state.refs?.bFieldTarget, Number.parseFloat(sample?.control_b_field_target));
+  setStat(
+    'drive_profile',
+    `${warpDriveLabel(drive)} | Q ${formatCompactNumber(qStaged, 2)} β ${formatCompactNumber(betaStaged, 3)} plasma ${formatCompactNumber(plasmaStaged, 2)} | thr ${formatCompactNumber(throttleStaged, 2)} em ${formatCompactNumber(emChargeStaged, 1)}C E ${formatCompactNumber(eFieldStaged, 1)}N/C B ${formatCompactNumber(bFieldStaged, 3)}T`
+  );
   const craftScale = Number.parseFloat(sample.craft_scale);
   const appliedScale = Number.isFinite(craftScale) ? craftScale : currentCraftScale();
   const craftSpanM = Number.parseFloat(sample.craft_span_m);
@@ -4476,10 +4546,18 @@ function updateHUD(sample) {
   setStat('view_altitude', formatDistanceCompact(sample.altitude));
   setStat('view_weight', `${formatCompactNumber(vertical ? vertical.ratio : NaN, 3)} xg`);
   setStat('view_lock', `${formatCompactNumber(sample.lock_quality, 3)} ${sample.lock_flag ? 'lock' : 'open'}`);
+  const warn = String(sample.warning_flags || '').trim();
+  setStat('view_lock_sub', `sig ${invariantSampleSignature(sample)} • ${validateTrailParity(sample) ? 'sync ok' : 'sync warn'}${warn ? ` • ${warn}` : ''}`);
 
   setStat('c', formatNumber(sample.coupling_c, 4));
   setStat('k', formatNumber(sample.coupling_k, 4));
   setStat('phi', formatNumber(sample.coupling_phi, 4));
+  setStat('res_lock_mini', `${formatCompactNumber(sample.lock_quality, 3)} ${sample.lock_flag ? 'lock' : 'open'}`);
+  setStat('res_phase_mini', formatNumber(sample.phase_error, 3));
+  setStat('res_osc_mini', formatCompactNumber(sample.osc_mag, 2));
+  setStat('res_k_mini', formatNumber(sample.coupling_k, 3));
+  setStat('res_c_mini', formatNumber(sample.coupling_c, 3));
+  setStat('res_power_mini', formatPowerCompact(drivePower));
   setStat('res_omega0', `${formatNumber(sample.resonator_omega0, 2)} rad/s`);
   setStat('res_q', formatNumber(sample.resonator_q, 1));
   setStat('res_beta', formatNumber(sample.resonator_beta, 3));
@@ -4509,6 +4587,29 @@ function updateHUD(sample) {
   setStat('atm_enabled', sample.atmosphere_enabled ? 'on' : 'off');
   setStat('atm_rho0', `${formatCompactNumber(sample.atmosphere_rho0, 3)} kg/m^3`);
   setStat('atm_scale_height', formatDistanceCompact(sample.atmosphere_scale_height));
+  setStat('atm_t0', `${formatCompactNumber(sample.atmosphere_temperature0, 2)} K`);
+  setStat('atm_lapse', `${formatCompactNumber(sample.atmosphere_lapse_rate, 5)} K/m`);
+  setStat('atm_gamma', formatCompactNumber(sample.atmosphere_gamma, 3));
+  setStat('atm_r', `${formatCompactNumber(sample.atmosphere_gas_constant, 2)} J/kgK`);
+  setStat('mach', formatCompactNumber(sample.mach, 3));
+  setStat('aoa', `${formatCompactNumber((sample.aoa_rad || 0) * (180 / Math.PI), 2)} deg`);
+  setStat('lift_force', `${formatCompactNumber(sample.lift_force_mag, 3)} N`);
+  setStat('thrust_force', `${formatCompactNumber(sample.thrust_force_mag, 3)} N`);
+  setStat('em_force', `${formatCompactNumber(sample.em_force_mag, 3)} N`);
+  setStat('g_load', `${formatCompactNumber(sample.g_load, 3)} g`);
+  setStat('dynamic_q', `${formatPowerCompact(sample.dynamic_pressure)} Pa`);
+  setStat('heat_flux', `${formatPowerCompact(sample.heat_flux)} W/m^2`);
+  setStat('skin_temp', `${formatCompactNumber(sample.skin_temp_k, 2)} K`);
+  setStat('struct_ok', sample.struct_ok ? 'ok' : 'limit');
+  setStat('struct_fatigue', formatCompactNumber(sample.struct_fatigue, 3));
+  setStat('pilot_ok', sample.pilot_ok ? 'ok' : 'limit');
+  setStat('pilot_stress', formatCompactNumber(sample.pilot_stress, 3));
+  setStat('g_long', `${formatCompactNumber(sample.g_axis_long, 3)} g`);
+  setStat('g_lat', `${formatCompactNumber(sample.g_axis_lat, 3)} g`);
+  setStat('g_vert', `${formatCompactNumber(sample.g_axis_vert, 3)} g`);
+  setStat('rel_beta', formatCompactNumber(sample.rel_beta, 6));
+  setStat('rel_gamma', formatCompactNumber(sample.rel_gamma, 6));
+  setStat('warn_flags', warn || 'clear');
   setStat('plasma_target', formatNumber(sample.control_plasma_target, 3));
   setStat('plasma_reduction', formatPercentCompact(sample.plasma_drag_reduction));
   setStat('plasma_power', formatPower(sample.plasma_power));
@@ -4540,7 +4641,10 @@ function updateHUD(sample) {
   setStat('pilot_lock_cmd', state.input.lockAssist ? 'on' : 'off');
   setStat('pilot_auto_trim', state.refs?.autoTrim?.checked ? 'on' : 'off');
   setStat('pilot_active_input', state.input.activeInput || 'none');
-  setStat('pilot_last_effect', state.input.lastEffect || 'none');
+  setStat(
+    'pilot_last_effect',
+    `${state.input.lastEffect || 'none'} | applied:[A ${formatNumber(sample.control_amp_axis, 2)} Φ ${formatNumber(sample.control_phi_axis, 2)} Y ${formatNumber(sample.control_yaw_axis, 2)} P ${formatNumber(sample.control_pitch_axis, 2)}]`
+  );
 
   const last = state.input.lastControl || {};
   setStat('control_mode', last.mode || 'manual');
@@ -4603,10 +4707,32 @@ function pushTrail(sample) {
   }
 }
 
+function validateTrailParity(sample) {
+  if (!sample || !sample.position || !state.game.trail3D.length) {
+    return true;
+  }
+  const tail = state.game.trail3D[state.game.trail3D.length - 1];
+  if (!tail) {
+    return true;
+  }
+  const dx = Math.abs((Number.parseFloat(tail.x) || 0) - (Number.parseFloat(sample.position.x) || 0));
+  const dy = Math.abs((Number.parseFloat(tail.y) || 0) - (Number.parseFloat(sample.position.y) || 0));
+  const dz = Math.abs((Number.parseFloat(tail.z) || 0) - (Number.parseFloat(sample.position.z) || 0));
+  return dx < 1e-3 && dy < 1e-3 && dz < 1e-3;
+}
+
 function clearTrails() {
   state.game.trailTop = [];
   state.game.trailSide = [];
   state.game.trail3D = [];
+}
+
+function renderLatestSample() {
+  if (!state.renderer) {
+    return;
+  }
+  state.renderer.setPlanetaryCamera(currentPlanetaryZoom(), currentPlanetaryCameraMode());
+  state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
 }
 
 async function apiPost(path, payload) {
@@ -4670,19 +4796,13 @@ async function exportScenario(format = 'zip') {
     return;
   }
 
-  if (!state.scenarios.length) {
-    setStatus('loading scenarios...');
-    await loadScenarios({ force: true });
-    hydrateScenarioSelect(root);
-  }
-
-  const scenario = selectedScenario(root);
+  const scenario = activeScenarioName();
   const formatKey = String(format || 'zip').toLowerCase();
   const ext = formatKey === 'csv' ? 'csv' : formatKey === 'meta' ? 'meta.json' : 'zip';
-  const fallbackName = `${scenario}-export.${ext}`;
+  const fallbackName = `free_play-export.${ext}`;
 
   state.exporting = true;
-  setStatus(`exporting ${scenario} (${formatKey})...`);
+  setStatus(`exporting free_play (${formatKey})...`);
   try {
     const url = `/api/sim/export?scenario=${encodeURIComponent(scenario)}&format=${encodeURIComponent(formatKey)}`;
     const res = await fetch(url, { credentials: 'same-origin' });
@@ -4717,21 +4837,15 @@ async function startGameSession() {
     return;
   }
 
-  if (!state.scenarios.length) {
-    setStatus('loading scenarios...');
-    await loadScenarios({ force: true });
-    hydrateScenarioSelect(root);
-  }
-
   await stopGameSession(true);
 
-  const scenario = selectedScenario(root);
+  const scenario = activeScenarioName();
   const warpDrive = selectedWarpDrive();
   const shipType = selectedShipType();
   const craftScale = currentCraftScale();
   const planetPreset = selectedPlanetPreset();
   state.game.mapMode = currentMapMode();
-  setStatus(`starting ${scenario} • ${warpDriveLabel(warpDrive)}...`);
+  setStatus(`starting free_play • ${warpDriveLabel(warpDrive)}...`);
   const startOnGround = Boolean(state.refs?.startGround?.checked);
 
   try {
@@ -4781,17 +4895,15 @@ async function startGameSession() {
       state.refs.pauseButton.textContent = 'Pause';
     }
     updateHUD(state.game.latest);
-    if (state.renderer) {
-      state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
-    }
+    renderLatestSample();
     const mode = String(state.game.latest?.gravity_model || '').toLowerCase();
     const couplerEnabled = Boolean(state.game.latest?.coupler_enabled);
     if (!couplerEnabled) {
-      setStatus(`running ${scenario} • coupler off • pilot/assist controls are telemetry-only here`);
+      setStatus('running free_play • coupler off • pilot/assist controls are telemetry-only here');
     } else if (mode && mode !== 'coupling') {
-      setStatus(`running ${scenario} • ${mode} model • coupler controls are telemetry-only here`);
+      setStatus(`running free_play • ${mode} model • coupler controls are telemetry-only here`);
     } else {
-      setStatus(`running ${scenario} • planet=${planetPreset} • ship=${shipType} • scale=${formatNumber(craftScale, 2)}x • map=${state.game.mapMode} • dt=${state.game.dt.toFixed(4)} s • ${startOnGround ? 'ground start' : 'scenario start'}`);
+      setStatus(`running free_play • planet=${planetPreset} • ship=${shipType} • scale=${formatNumber(craftScale, 2)}x • map=${state.game.mapMode} • dt=${state.game.dt.toFixed(4)} s • ${startOnGround ? 'ground start' : 'default start'}`);
     }
     if (!state.game.rafId) {
       state.game.rafId = window.requestAnimationFrame(gameLoop);
@@ -4853,12 +4965,36 @@ async function resetGameSession() {
 }
 
 function currentControlPayload(sample = state.game.latest) {
-  const manualAmp = 0;
-  const manualPhi = 0;
-  const manualYaw = 0;
-  const manualPitch = 0;
+  const holdAmpEnabled = Boolean(state.refs?.holdAmpEnabled?.checked);
+  const holdPhiEnabled = Boolean(state.refs?.holdPhiEnabled?.checked);
+  const holdYawEnabled = Boolean(state.refs?.holdYawEnabled?.checked);
+  const holdPitchEnabled = Boolean(state.refs?.holdPitchEnabled?.checked);
+  const leverAmp = clampUnit(readNumberInput(state.refs?.holdAmpTarget, 0));
+  const leverPhi = clampUnit(readNumberInput(state.refs?.holdPhiTarget, 0));
+  const leverYaw = clampUnit(readNumberInput(state.refs?.holdYawTarget, 0));
+  const leverPitch = clampUnit(readNumberInput(state.refs?.holdPitchTarget, 0));
+  const manualAmp = leverAmp;
+  const manualPhi = leverPhi;
+  const manualYaw = leverYaw;
+  const manualPitch = leverPitch;
   const oscTargets = currentOscillatorTargets(sample);
   const plasmaTarget = currentPlasmaTarget(sample);
+  const throttleTarget = clampNumber(
+    readNumberInput(state.refs?.throttleTarget, Number.parseFloat(sample?.control_throttle_target)),
+    -1, 1, 0
+  );
+  const emChargeTarget = clampNumber(
+    readNumberInput(state.refs?.emChargeTarget, Number.parseFloat(sample?.control_em_charge_target)),
+    -20000, 20000, 0
+  );
+  const eFieldTarget = clampNumber(
+    readNumberInput(state.refs?.eFieldTarget, Number.parseFloat(sample?.control_e_field_target)),
+    -100000, 100000, 0
+  );
+  const bFieldTarget = clampNumber(
+    readNumberInput(state.refs?.bFieldTarget, Number.parseFloat(sample?.control_b_field_target)),
+    -5, 5, 0
+  );
 
   let autoAmp = 0;
   let autoPhi = 0;
@@ -4870,42 +5006,8 @@ function currentControlPayload(sample = state.game.latest) {
   const couplingModel = String(sample?.gravity_model || '').toLowerCase() === 'coupling';
   const canAssist = couplerEnabled && couplingModel;
 
-  const holdAmpEnabled = Boolean(state.refs?.holdAmpEnabled?.checked);
-  const holdPhiEnabled = Boolean(state.refs?.holdPhiEnabled?.checked);
-  const holdYawEnabled = Boolean(state.refs?.holdYawEnabled?.checked);
-  const holdPitchEnabled = Boolean(state.refs?.holdPitchEnabled?.checked);
-  const targetAssistEnabled = canAssist && (holdAmpEnabled || holdPhiEnabled || holdYawEnabled || holdPitchEnabled);
   const autoTrimRequested = Boolean(state.refs?.autoTrim?.checked);
   const autoTrimEnabled = autoTrimRequested && canAssist && state.input.lockAssist;
-
-  if (targetAssistEnabled) {
-    const ampTarget = readNumberInput(state.refs?.holdAmpTarget, Number.parseFloat(sample?.control_amp_target));
-    const phiTarget = readNumberInput(state.refs?.holdPhiTarget, Number.parseFloat(sample?.control_theta_target));
-    const yawTarget = readNumberInput(state.refs?.holdYawTarget, Number.parseFloat(sample?.control_axis_yaw));
-    const pitchTarget = readNumberInput(state.refs?.holdPitchTarget, Number.parseFloat(sample?.control_axis_pitch));
-
-    const ampCurrent = Number.parseFloat(sample?.control_amp_target);
-    const phiCurrent = Number.parseFloat(sample?.control_theta_target);
-    const yawCurrent = Number.parseFloat(sample?.control_axis_yaw);
-    const pitchCurrent = Number.parseFloat(sample?.control_axis_pitch);
-
-    if (holdAmpEnabled && Number.isFinite(ampTarget) && Number.isFinite(ampCurrent) && !autoTrimEnabled) {
-      autoAmp += clampUnit((ampTarget - ampCurrent) / 0.35);
-    }
-    if (holdPhiEnabled && Number.isFinite(phiTarget) && Number.isFinite(phiCurrent) && !autoTrimEnabled) {
-      autoPhi += clampUnit((phiTarget - phiCurrent) / 0.6);
-    }
-    if (holdYawEnabled && Number.isFinite(yawTarget) && Number.isFinite(yawCurrent)) {
-      autoYaw += clampUnit(wrapRadians(yawTarget - yawCurrent) / 0.6);
-    }
-    if (holdPitchEnabled && Number.isFinite(pitchTarget) && Number.isFinite(pitchCurrent)) {
-      autoPitch += clampUnit((pitchTarget - pitchCurrent) / 0.45);
-    }
-
-    if (!autoTrimEnabled) {
-      mode = 'assist-targets';
-    }
-  }
 
   if (autoTrimEnabled) {
     const vertical = localVerticalMetrics(sample);
@@ -4919,12 +5021,12 @@ function currentControlPayload(sample = state.game.latest) {
     const verticalErrRaw = Number.isFinite(verticalVel) ? (targetVertical - verticalVel) : 0;
     const lockErrRaw = Number.isFinite(lockQuality) ? (0.9 - lockQuality) : 0;
 
-    const weightErr = clampNumber(weightErrRaw, -2.5, 2.5, 0);
-    const verticalErr = clampNumber(verticalErrRaw, -20, 20, 0);
+    const weightErr = clampNumber(weightErrRaw, -1000, 1000, 0);
+    const verticalErr = clampNumber(verticalErrRaw, -100000, 100000, 0);
     const lockErr = clampNumber(lockErrRaw, -1, 1, 0);
 
     if (Math.abs(weightErr) > 0.02 || Math.abs(verticalErr) > 0.08) {
-      autoPhi += clampUnit((weightErr * 0.35) + (verticalErr * 0.018));
+      autoPhi += clampUnit((weightErr * 0.45) + (verticalErr * 0.0035));
     }
     autoAmp += clampUnit(lockErr * 0.7);
 
@@ -4937,6 +5039,18 @@ function currentControlPayload(sample = state.game.latest) {
     mode = 'assist-ship';
   } else if (autoTrimRequested && canAssist && !state.input.lockAssist) {
     mode = 'assist-ship (lock off)';
+  }
+
+  // If levers are released and not locked, softly recenter warp orientation in sim-space.
+  if (!autoTrimEnabled) {
+    const yawCurrent = Number.parseFloat(sample?.control_axis_yaw);
+    const pitchCurrent = Number.parseFloat(sample?.control_axis_pitch);
+    if (!holdYawEnabled && Math.abs(leverYaw) < 0.02 && Number.isFinite(yawCurrent)) {
+      autoYaw += clampUnit((-yawCurrent) / 0.7) * 0.4;
+    }
+    if (!holdPitchEnabled && Math.abs(leverPitch) < 0.02 && Number.isFinite(pitchCurrent)) {
+      autoPitch += clampUnit((-pitchCurrent) / 0.7) * 0.6;
+    }
   }
 
   const ampAxis = clampUnit(manualAmp + autoAmp);
@@ -4959,11 +5073,7 @@ function currentControlPayload(sample = state.game.latest) {
     finalYaw: yawAxis,
     finalPitch: pitchAxis
   };
-  const ampTarget = readNumberInput(state.refs?.holdAmpTarget, Number.parseFloat(sample?.control_amp_target));
-  const phiTarget = readNumberInput(state.refs?.holdPhiTarget, Number.parseFloat(sample?.control_theta_target));
-  const yawTarget = readNumberInput(state.refs?.holdYawTarget, Number.parseFloat(sample?.control_axis_yaw));
-  const pitchTarget = readNumberInput(state.refs?.holdPitchTarget, Number.parseFloat(sample?.control_axis_pitch));
-  state.input.activeInput = `locks:[A ${holdAmpEnabled ? 'on' : 'off'} Φ ${holdPhiEnabled ? 'on' : 'off'} Y ${holdYawEnabled ? 'on' : 'off'} P ${holdPitchEnabled ? 'on' : 'off'}] | targets:[A ${formatNumber(ampTarget, 3)} Φ ${formatNumber(phiTarget, 3)} Y ${formatNumber(yawTarget, 3)} P ${formatNumber(pitchTarget, 3)}] | ${oscillatorTargetSummary(sample)} | final:[A ${formatNumber(ampAxis, 2)} Φ ${formatNumber(phiAxis, 2)} Y ${formatNumber(yawAxis, 2)} P ${formatNumber(pitchAxis, 2)}] | nudge:${state.input.lastNudge || 'none'}`;
+  state.input.activeInput = `locks:[A ${holdAmpEnabled ? 'on' : 'off'} Φ ${holdPhiEnabled ? 'on' : 'off'} Y ${holdYawEnabled ? 'on' : 'off'} P ${holdPitchEnabled ? 'on' : 'off'}] | levers:[A ${formatNumber(leverAmp, 2)} Φ ${formatNumber(leverPhi, 2)} Y ${formatNumber(leverYaw, 2)} P ${formatNumber(leverPitch, 2)}] | ${oscillatorTargetSummary(sample)} | final:[A ${formatNumber(ampAxis, 2)} Φ ${formatNumber(phiAxis, 2)} Y ${formatNumber(yawAxis, 2)} P ${formatNumber(pitchAxis, 2)}] | nudge:${state.input.lastNudge || 'none'}`;
 
   return {
     amp_axis: ampAxis,
@@ -4974,6 +5084,10 @@ function currentControlPayload(sample = state.game.latest) {
     q_target: oscTargets.q,
     beta_target: oscTargets.beta,
     plasma_target: plasmaTarget,
+    throttle_target: throttleTarget,
+    em_charge_target: emChargeTarget,
+    e_field_target: eFieldTarget,
+    b_field_target: bFieldTarget,
     lock_assist: state.input.lockAssist
   };
 }
@@ -4995,9 +5109,29 @@ async function requestStep(steps) {
     if (!sample) {
       throw new Error('empty step response');
     }
+    const validity = validateSample(sample);
+    if (!validity.ok) {
+      throw new Error(`invalid sample: ${validity.reason}`);
+    }
+    const monotonic = validateMonotonicTransition(prevSample, sample);
+    if (!monotonic.ok) {
+      throw new Error(`invalid transition: ${monotonic.reason}`);
+    }
     state.game.latest = sample;
     updateControlEffect(prevSample, sample);
+    syncUnlockedControlBarsToSample(sample);
     pushTrail(sample);
+    const moved = Boolean(
+      prevSample && prevSample.position && sample.position &&
+      (
+        Math.abs((sample.position.x || 0) - (prevSample.position.x || 0)) > 1e-9 ||
+        Math.abs((sample.position.y || 0) - (prevSample.position.y || 0)) > 1e-9 ||
+        Math.abs((sample.position.z || 0) - (prevSample.position.z || 0)) > 1e-9
+      )
+    );
+    if (moved && !validateTrailParity(sample)) {
+      setStatus('sync warning: trail/render source mismatch');
+    }
     updateHUD(sample);
     const vertical = localVerticalMetrics(sample);
     const ratio = vertical ? formatNumber(vertical.ratio, 3) : '-';
@@ -5021,6 +5155,11 @@ function gameLoop(ts) {
     state.game.lastFrameTs = ts;
   }
 
+  if ((ts - state.game.lastFrameTs) < BROWSER_FRAME_INTERVAL_MS) {
+    state.game.rafId = window.requestAnimationFrame(gameLoop);
+    return;
+  }
+
   const wallDt = Math.min(0.1, Math.max(0, (ts - state.game.lastFrameTs) / 1000));
   state.game.lastFrameTs = ts;
 
@@ -5035,10 +5174,7 @@ function gameLoop(ts) {
     }
   }
 
-  if (state.renderer) {
-    state.renderer.setPlanetaryCamera(currentPlanetaryZoom(), currentPlanetaryCameraMode());
-    state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
-  }
+  renderLatestSample();
   state.game.rafId = window.requestAnimationFrame(gameLoop);
 }
 
@@ -5094,6 +5230,12 @@ function setupEvents() {
       return;
     }
 
+    if (event.target.closest('[data-calibration-refresh]')) {
+      event.preventDefault();
+      void fetchCalibrationSummary();
+      return;
+    }
+
     if (event.target.closest('[data-control-bars-center]')) {
       event.preventDefault();
       centerControlBars();
@@ -5111,6 +5253,14 @@ function setupEvents() {
       event.preventDefault();
       const preset = presetButton.getAttribute('data-assist-preset') || '';
       applyAssistPreset(preset);
+      return;
+    }
+
+    const resonatorPresetButton = event.target.closest('[data-resonator-preset]');
+    if (resonatorPresetButton) {
+      event.preventDefault();
+      const preset = resonatorPresetButton.getAttribute('data-resonator-preset') || '';
+      applyResonatorPreset(preset);
       return;
     }
 
@@ -5187,17 +5337,11 @@ function setupEvents() {
     if (target.matches('[data-map-mode]')) {
       state.game.mapMode = currentMapMode();
       updateHUD(state.game.latest);
-      if (state.renderer) {
-        state.renderer.setPlanetaryCamera(currentPlanetaryZoom(), currentPlanetaryCameraMode());
-        state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
-      }
+      renderLatestSample();
       return;
     }
     if (target.matches('[data-planetary-camera]') || target.matches('[data-planetary-zoom]')) {
-      if (state.renderer) {
-        state.renderer.setPlanetaryCamera(currentPlanetaryZoom(), currentPlanetaryCameraMode());
-        state.renderer.draw(state.game.latest, state.game.trailTop, state.game.trailSide, state.game.trail3D, currentMapMode());
-      }
+      renderLatestSample();
       return;
     }
     if (target.matches('[data-planet-preset]')) {
@@ -5205,9 +5349,12 @@ function setupEvents() {
       return;
     }
     if (target.matches('[data-warp-drive]')) {
+      applyWarpDriveUiDefaults(selectedWarpDrive(), false);
       updateHUD(state.game.latest);
       if (state.game.running) {
         setStatus(`${warpDriveLabel(selectedWarpDrive())} selected • reset/start session to apply`);
+      } else {
+        setStatus(`${warpDriveLabel(selectedWarpDrive())} profile staged`);
       }
       return;
     }
@@ -5230,6 +5377,10 @@ function setupEvents() {
       target.matches('[data-osc-q-target]') ||
       target.matches('[data-osc-beta-target]') ||
       target.matches('[data-plasma-target]') ||
+      target.matches('[data-throttle-target]') ||
+      target.matches('[data-em-charge-target]') ||
+      target.matches('[data-e-field-target]') ||
+      target.matches('[data-b-field-target]') ||
       target.matches('[data-hold-yaw-target]') ||
       target.matches('[data-hold-pitch-target]') ||
       target.matches('[data-hold-amp-enabled]') ||
@@ -5237,6 +5388,7 @@ function setupEvents() {
       target.matches('[data-hold-yaw-enabled]') ||
       target.matches('[data-hold-pitch-enabled]')
     ) {
+      syncUnlockedControlBarsToSample(state.game.latest);
       updateControlBarReadouts();
       updateHUD(state.game.latest);
     }
@@ -5255,6 +5407,10 @@ function setupEvents() {
       target.matches('[data-osc-q-target]') ||
       target.matches('[data-osc-beta-target]') ||
       target.matches('[data-plasma-target]') ||
+      target.matches('[data-throttle-target]') ||
+      target.matches('[data-em-charge-target]') ||
+      target.matches('[data-e-field-target]') ||
+      target.matches('[data-b-field-target]') ||
       target.matches('[data-hold-yaw-target]') ||
       target.matches('[data-hold-pitch-target]')
     ) {
@@ -5264,6 +5420,18 @@ function setupEvents() {
       }
       updateControlBarReadouts();
     }
+  }, true);
+
+  document.addEventListener('pointerup', (event) => {
+    maybeSpringReturnLever(event.target);
+  }, true);
+  document.addEventListener('mouseup', (event) => {
+    maybeSpringReturnLever(event.target);
+  }, true);
+  document.addEventListener('touchend', (event) => {
+    const touch = event.changedTouches && event.changedTouches[0];
+    const target = touch ? document.elementFromPoint(touch.clientX, touch.clientY) : event.target;
+    maybeSpringReturnLever(target);
   }, true);
 
   document.addEventListener('gx:updated', () => {
@@ -5295,7 +5463,6 @@ async function boot() {
   ensureRecyclrMount();
   normalizePaperNavSelection();
   setupEvents();
-  await loadScenarios();
   maybeInitLab();
 }
 
@@ -5305,4 +5472,130 @@ if (document.readyState === 'loading') {
   void boot();
 }
 
-},{"recyclrjs":1}]},{},[2]);
+},{"./lab/invariants":3,"./lab/state":4,"recyclrjs":1}],3:[function(require,module,exports){
+function finiteNumber(v) {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+function hasVec3(v) {
+  return Boolean(v) && finiteNumber(v.x) && finiteNumber(v.y) && finiteNumber(v.z);
+}
+
+function sampleSignature(sample) {
+  if (!sample || !hasVec3(sample.position)) {
+    return 'na';
+  }
+  const step = finiteNumber(sample.step) ? sample.step : -1;
+  const t = finiteNumber(sample.time) ? sample.time : -1;
+  const x = sample.position.x;
+  const y = sample.position.y;
+  const z = sample.position.z;
+  return `${step}|${t.toFixed(3)}|${x.toFixed(2)}|${y.toFixed(2)}|${z.toFixed(2)}`;
+}
+
+function validateSample(sample) {
+  if (!sample || typeof sample !== 'object') {
+    return { ok: false, reason: 'sample missing' };
+  }
+  if (!Number.isInteger(sample.step) || sample.step < 0) {
+    return { ok: false, reason: 'invalid step' };
+  }
+  if (!finiteNumber(sample.time) || sample.time < 0) {
+    return { ok: false, reason: 'invalid time' };
+  }
+  if (!finiteNumber(sample.dt) || sample.dt <= 0) {
+    return { ok: false, reason: 'invalid dt' };
+  }
+  if (!hasVec3(sample.position)) {
+    return { ok: false, reason: 'invalid position' };
+  }
+  if (!hasVec3(sample.velocity)) {
+    return { ok: false, reason: 'invalid velocity' };
+  }
+  if (!hasVec3(sample.primary_position)) {
+    return { ok: false, reason: 'invalid primary_position' };
+  }
+  if (!finiteNumber(sample.speed) || sample.speed < 0) {
+    return { ok: false, reason: 'invalid speed' };
+  }
+  if (!finiteNumber(sample.altitude)) {
+    return { ok: false, reason: 'invalid altitude' };
+  }
+  return { ok: true, reason: '' };
+}
+
+function validateMonotonicTransition(prev, next) {
+  if (!prev || !next) {
+    return { ok: true, reason: '' };
+  }
+  if (next.step < prev.step) {
+    return { ok: false, reason: `step regressed (${prev.step} -> ${next.step})` };
+  }
+  if (next.time + 1e-9 < prev.time) {
+    return { ok: false, reason: `time regressed (${prev.time} -> ${next.time})` };
+  }
+  return { ok: true, reason: '' };
+}
+
+module.exports = {
+  sampleSignature,
+  validateSample,
+  validateMonotonicTransition
+};
+
+},{}],4:[function(require,module,exports){
+function createInitialState() {
+  return {
+    mounted: false,
+    labRoot: null,
+    refs: null,
+    renderer: null,
+    game: {
+      sessionId: '',
+      dt: 1 / 120,
+      running: false,
+      paused: false,
+      requestInFlight: false,
+      rafId: 0,
+      lastFrameTs: 0,
+      accumulator: 0,
+      latest: null,
+      initialEnergy: Number.NaN,
+      trailTop: [],
+      trailSide: [],
+      trail3D: [],
+      maxTrail: 900,
+      mapMode: 'planetary',
+      speedometerScale: 400
+    },
+    input: {
+      keys: Object.create(null),
+      lockAssist: true,
+      activeInput: 'none',
+      lastEffect: 'none',
+      lastNudge: 'none',
+      lastControl: {
+        mode: 'manual',
+        manualAmp: 0,
+        manualPhi: 0,
+        manualYaw: 0,
+        manualPitch: 0,
+        autoAmp: 0,
+        autoPhi: 0,
+        autoYaw: 0,
+        autoPitch: 0,
+        finalAmp: 0,
+        finalPhi: 0,
+        finalYaw: 0,
+        finalPitch: 0
+      }
+    },
+    exporting: false
+  };
+}
+
+module.exports = {
+  createInitialState
+};
+
+},{}]},{},[2]);

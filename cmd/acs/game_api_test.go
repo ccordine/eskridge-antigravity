@@ -9,6 +9,17 @@ import (
 	"github.com/example/acs/internal/mathx"
 )
 
+type presetCalibration struct {
+	preset         string
+	gSurface       float64
+	gTolerance     float64
+	hasAtm         bool
+	rho0           float64
+	rhoTolerance   float64
+	scaleH         float64
+	scaleTolerance float64
+}
+
 func TestWarpAxisWorldFromYawPitchCenteredAlignsLocalUp(t *testing.T) {
 	position := mathx.Vec3{Z: 6_372_000}
 	primary := mathx.Vec3{}
@@ -85,5 +96,194 @@ func TestGameSessionOrientationTracksWarpAxis(t *testing.T) {
 	alignment := warpAxis.Dot(bodyUp)
 	if alignment < 0.995 {
 		t.Fatalf("expected craft orientation to track warp axis, alignment=%.6f warp=%+v up=%+v", alignment, warpAxis, bodyUp)
+	}
+}
+
+func TestPlanetPresetAtmosphereConsistency(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+
+	moon, err := newGameSession("test-moon", scenarioPath, cfg, false, "saucer", "resonant_pll", "moon", 1)
+	if err != nil {
+		t.Fatalf("new moon session: %v", err)
+	}
+	moonState, err := moon.State()
+	if err != nil {
+		t.Fatalf("moon state: %v", err)
+	}
+	if moonState.AtmosphereEnabled {
+		t.Fatalf("moon should have no atmosphere")
+	}
+	if moonState.AtmosphereRho0 != 0 {
+		t.Fatalf("moon rho0 should be 0, got %.6g", moonState.AtmosphereRho0)
+	}
+
+	earth, err := newGameSession("test-earth", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth", 1)
+	if err != nil {
+		t.Fatalf("new earth session: %v", err)
+	}
+	earthState, err := earth.State()
+	if err != nil {
+		t.Fatalf("earth state: %v", err)
+	}
+	if !earthState.AtmosphereEnabled {
+		t.Fatalf("earth should have atmosphere")
+	}
+	if earthState.AtmosphereRho0 <= 0 {
+		t.Fatalf("earth rho0 must be > 0")
+	}
+}
+
+func TestWarpDriveProfileStagesControlEnvelope(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+
+	sess, err := newGameSession("test-drive-profile", scenarioPath, cfg, false, "saucer", "plasma_mhd", "earth", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	state, err := sess.State()
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	if state.ControlPlasmaTarget < 0.7 {
+		t.Fatalf("plasma_mhd profile should stage high plasma target, got %.4f", state.ControlPlasmaTarget)
+	}
+	if state.ControlEMChargeTarget <= 0 {
+		t.Fatalf("plasma_mhd profile should stage positive em charge, got %.4f", state.ControlEMChargeTarget)
+	}
+	if state.ControlThrottleTarget <= 0 {
+		t.Fatalf("plasma_mhd profile should stage positive throttle target, got %.4f", state.ControlThrottleTarget)
+	}
+}
+
+func TestAlcubierreAGProfileStagesControlEnvelope(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+
+	sess, err := newGameSession("test-drive-alcubierre", scenarioPath, cfg, false, "saucer", "alcubierre_ag", "earth", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	state, err := sess.State()
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	if state.WarpDrive != "alcubierre_ag" {
+		t.Fatalf("expected warp drive alcubierre_ag, got %q", state.WarpDrive)
+	}
+	if state.ControlQTarget < 400 {
+		t.Fatalf("alcubierre_ag should stage high Q, got %.4f", state.ControlQTarget)
+	}
+	if state.ControlBetaTarget < 4.0 {
+		t.Fatalf("alcubierre_ag should stage high beta, got %.4f", state.ControlBetaTarget)
+	}
+	if state.ControlThrottleTarget <= 0 {
+		t.Fatalf("alcubierre_ag should stage positive throttle target, got %.4f", state.ControlThrottleTarget)
+	}
+}
+
+func TestPlanetPresetCalibrationAgainstReference(t *testing.T) {
+	// Reference targets are practical engineering anchors for gameplay realism,
+	// not strict ephemeris-grade validation.
+	cases := []presetCalibration{
+		{preset: "earth", gSurface: 9.81, gTolerance: 0.06, hasAtm: true, rho0: 1.225, rhoTolerance: 0.12, scaleH: 8500, scaleTolerance: 0.25},
+		{preset: "mercury", gSurface: 3.70, gTolerance: 0.10, hasAtm: false},
+		{preset: "moon", gSurface: 1.62, gTolerance: 0.10, hasAtm: false},
+		{preset: "mars", gSurface: 3.71, gTolerance: 0.12, hasAtm: true, rho0: 0.020, rhoTolerance: 0.45, scaleH: 11100, scaleTolerance: 0.35},
+		{preset: "venus", gSurface: 8.87, gTolerance: 0.08, hasAtm: true, rho0: 65.0, rhoTolerance: 0.30, scaleH: 15900, scaleTolerance: 0.35},
+		{preset: "titan", gSurface: 1.35, gTolerance: 0.10, hasAtm: true, rho0: 5.30, rhoTolerance: 0.35, scaleH: 20000, scaleTolerance: 0.40},
+		{preset: "jupiter", gSurface: 24.79, gTolerance: 0.12, hasAtm: true, rho0: 0.16, rhoTolerance: 0.60, scaleH: 27000, scaleTolerance: 0.45},
+		{preset: "neptune", gSurface: 11.15, gTolerance: 0.12, hasAtm: true, rho0: 0.45, rhoTolerance: 0.60, scaleH: 20000, scaleTolerance: 0.45},
+	}
+
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.preset, func(t *testing.T) {
+			session, err := newGameSession("cal-"+tc.preset, scenarioPath, cfg, false, "saucer", "resonant_pll", tc.preset, 1)
+			if err != nil {
+				t.Fatalf("new session: %v", err)
+			}
+			state, err := session.State()
+			if err != nil {
+				t.Fatalf("state: %v", err)
+			}
+
+			gComputed := state.GRawMag
+			if math.IsNaN(gComputed) || math.IsInf(gComputed, 0) || gComputed <= 0 {
+				t.Fatalf("invalid computed gravity: %.6g", gComputed)
+			}
+			gRelErr := math.Abs(gComputed-tc.gSurface) / math.Max(tc.gSurface, 1e-9)
+			if gRelErr > tc.gTolerance {
+				t.Fatalf("surface g out of tolerance: got %.6g want %.6g relerr %.3f tol %.3f", gComputed, tc.gSurface, gRelErr, tc.gTolerance)
+			}
+
+			if tc.hasAtm != state.AtmosphereEnabled {
+				t.Fatalf("atmosphere enabled mismatch: got=%v want=%v", state.AtmosphereEnabled, tc.hasAtm)
+			}
+			if !tc.hasAtm {
+				if math.Abs(state.AtmosphereRho0) > 1e-9 {
+					t.Fatalf("expected rho0 ~= 0 for no-atm body, got %.6g", state.AtmosphereRho0)
+				}
+				return
+			}
+
+			rhoErr := math.Abs(state.AtmosphereRho0-tc.rho0) / math.Max(math.Abs(tc.rho0), 1e-9)
+			if rhoErr > tc.rhoTolerance {
+				t.Fatalf("rho0 out of tolerance: got %.6g want %.6g relerr %.3f tol %.3f", state.AtmosphereRho0, tc.rho0, rhoErr, tc.rhoTolerance)
+			}
+
+			scaleErr := math.Abs(state.AtmosphereScaleH-tc.scaleH) / math.Max(math.Abs(tc.scaleH), 1e-9)
+			if scaleErr > tc.scaleTolerance {
+				t.Fatalf("scale height out of tolerance: got %.6g want %.6g relerr %.3f tol %.3f", state.AtmosphereScaleH, tc.scaleH, scaleErr, tc.scaleTolerance)
+			}
+		})
+	}
+}
+
+func TestPilotStressAccumulatesUnderHighLoad(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+	session, err := newGameSession("pilot-stress", scenarioPath, cfg, false, "saucer", "alcubierre_ag", "earth", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	session.controls.LockAssist = false
+	session.controls.AmpTarget = 10
+	session.controls.ThetaTarget = 2.4
+	session.controls.AxisPitch = 1.2
+
+	initial, err := session.State()
+	if err != nil {
+		t.Fatalf("initial state: %v", err)
+	}
+	for i := 0; i < 400; i++ {
+		if _, err := session.Step(1, gameControlInput{}); err != nil {
+			t.Fatalf("step %d: %v", i, err)
+		}
+	}
+	final, err := session.State()
+	if err != nil {
+		t.Fatalf("final state: %v", err)
+	}
+	if final.PilotStress <= initial.PilotStress {
+		t.Fatalf("expected pilot stress to accumulate, initial=%.6g final=%.6g", initial.PilotStress, final.PilotStress)
 	}
 }

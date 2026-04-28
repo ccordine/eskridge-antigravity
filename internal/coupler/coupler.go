@@ -150,6 +150,15 @@ func (s *State) Update(dt float64) {
 	}
 
 	s.Params.Omega0 += s.Params.Omega0DriftRate * dt
+	if math.IsNaN(s.Params.Omega0) || math.IsInf(s.Params.Omega0, 0) {
+		s.Params.Omega0 = 0
+	}
+	if math.IsNaN(s.Params.Q) || math.IsInf(s.Params.Q, 0) || s.Params.Q <= 1e-9 {
+		s.Params.Q = 1e-9
+	}
+	if math.IsNaN(s.Params.Beta) || math.IsInf(s.Params.Beta, 0) {
+		s.Params.Beta = 0
+	}
 
 	s.ADrive = mathx.MoveToward(s.ADrive, cmdOrDefault(s.Cmd.Amplitude, s.ADrive), s.Params.AmpRate*dt)
 	s.ADrive = mathx.Clamp(s.ADrive, s.Params.MinAmplitude, s.Params.MaxAmplitude)
@@ -175,6 +184,11 @@ func (s *State) Update(dt float64) {
 		driveGain = (expStep - 1) / lambda
 	}
 	s.Z = expStep*s.Z + complex(s.Params.Beta, 0)*drive*driveGain
+	if math.IsNaN(real(s.Z)) || math.IsInf(real(s.Z), 0) || math.IsNaN(imag(s.Z)) || math.IsInf(imag(s.Z), 0) {
+		s.Z = 0
+		s.LockQuality = 0
+		s.EInt = 0
+	}
 
 	thetaR := cmplx.Phase(s.Z)
 	// PLL lock tracks resonator-drive phase coherence only.
@@ -195,6 +209,9 @@ func (s *State) Update(dt float64) {
 	s.recomputeDerived()
 
 	s.DrivePower = s.Params.PowerC1*s.ADrive*s.ADrive + s.Params.PowerC2*cmplx.Abs(s.Z)*cmplx.Abs(s.Z)
+	if math.IsNaN(s.DrivePower) || math.IsInf(s.DrivePower, 0) || s.DrivePower < 0 {
+		s.DrivePower = 0
+	}
 	if s.Params.PowerLimit > 0 && s.DrivePower > s.Params.PowerLimit {
 		s.DrivePower = s.Params.PowerLimit
 	}
