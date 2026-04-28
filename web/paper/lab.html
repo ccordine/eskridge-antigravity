@@ -89,7 +89,8 @@
 
         <label class="lab-field">
           <span class="lab-label">Sim Speed</span>
-          <input data-game-speed type="number" min="0.25" max="8" step="0.25" value="1.0" class="lab-input" />
+          <input data-game-speed type="range" min="0.25" max="8" step="0.25" value="1.0" class="lab-slider" />
+          <small data-game-speed-readout class="font-mono text-sm">1.00x</small>
         </label>
 
         <label class="lab-field lab-field-wide">
@@ -195,6 +196,7 @@
               <small data-stat="view_lock_sub">-</small>
             </div>
           </section>
+
         </div>
 
         <aside class="lab-flight-controls">
@@ -205,6 +207,18 @@
             </div>
 
             <div class="lab-control-grid lab-control-grid-flight">
+              <section class="lab-control-card">
+                <div class="lab-control-card-head">
+                  <div>
+                    <p class="lab-control-card-title">Propulsion Stick</p>
+                    <p class="lab-control-card-sub">spring joystick intent</p>
+                  </div>
+                </div>
+                <p data-control-readout="propstick" class="lab-control-readout">L 0.00 | F 0.00</p>
+                <input data-prop-lateral type="range" min="-1" max="1" step="0.01" value="0.0" class="lab-slider" />
+                <input data-prop-forward type="range" min="-1" max="1" step="0.01" value="0.0" class="lab-slider mt-2" />
+              </section>
+
               <section class="lab-control-card">
                 <div class="lab-control-card-head">
                   <div>
@@ -432,10 +446,7 @@
               </label>
 
               <div class="lab-preset-row lab-preset-row-wide">
-                <button data-assist-preset="hover" class="lab-btn lab-btn-soft" type="button">Hover</button>
                 <button data-assist-preset="neutral" class="lab-btn lab-btn-soft" type="button">Normal g</button>
-                <button data-assist-preset="ascend" class="lab-btn lab-btn-soft" type="button">Ascend</button>
-                <button data-assist-preset="descend" class="lab-btn lab-btn-soft" type="button">Descend</button>
               </div>
 
             </div>

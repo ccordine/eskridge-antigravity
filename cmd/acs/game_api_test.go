@@ -7,6 +7,7 @@ import (
 
 	"github.com/example/acs/internal/config"
 	"github.com/example/acs/internal/mathx"
+	"github.com/example/acs/internal/physics"
 )
 
 type presetCalibration struct {
@@ -279,6 +280,193 @@ func TestAlcubierreAGProfileStagesControlEnvelope(t *testing.T) {
 	}
 	if state.ControlThrottleTarget <= 0 {
 		t.Fatalf("alcubierre_ag should stage positive throttle target, got %.4f", state.ControlThrottleTarget)
+	}
+}
+
+func TestDominantPrimarySwitchDoesNotRebaseCraftVelocity(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+	session, err := newGameSession("test-primary-switch", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth_moon", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	if len(session.bodies) < 2 {
+		t.Fatalf("need at least two bodies for dominant switch")
+	}
+
+	session.primaryIdx = 0
+	session.bodies[0].Position = mathx.Vec3{X: 0, Y: 0, Z: 0}
+	session.bodies[1].Position = mathx.Vec3{X: 1000, Y: 0, Z: 0}
+	session.bodies[0].Mass = 1
+	session.bodies[1].Mass = 10
+	session.bodies[0].Velocity = mathx.Vec3{X: 100, Y: 0, Z: 0}
+	session.bodies[1].Velocity = mathx.Vec3{X: -900, Y: 0, Z: 0}
+	session.craft.Position = mathx.Vec3{X: 1001, Y: 0, Z: 0}
+	session.craft.Velocity = mathx.Vec3{X: 321, Y: -45, Z: 9}
+	before := session.craft.Velocity
+
+	session.updateDominantPrimaryLocked()
+
+	if got := session.craft.Velocity.Sub(before).Norm(); got > 1e-9 {
+		t.Fatalf("primary switch must not rewrite craft velocity; delta=%.6g before=%+v after=%+v", got, before, session.craft.Velocity)
+	}
+	if session.primaryIdx != 1 {
+		t.Fatalf("expected dominant primary to switch to body 1, got %d", session.primaryIdx)
+	}
+}
+
+func TestCouplingGravityAuthorityUsesCouplingStepState(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+	session, err := newGameSession("test-coupling-authority", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	session.gravityModel = "coupling"
+	session.controls.AxisPitch = 0.7
+	session.controls.AxisYaw = 0.3
+	session.syncWarpAxisLocked()
+
+	raw := physics.GravityAt(session.craft.Position, session.env.G, session.bodies)
+	coupled := session.couplerState.EffectiveGravityAccel(raw, session.craft.Orientation)
+	if coupled.Sub(raw).Norm() < 1e-9 {
+		t.Fatalf("test setup invalid: coupled gravity equals raw gravity")
+	}
+
+	session.couplingStep.QGAuthority = 0
+	e0 := session.evaluateGravityLocked()
+	if got := e0.effective.Sub(raw).Norm(); got > 1e-9 {
+		t.Fatalf("authority=0 should produce raw gravity, diff=%.6g", got)
+	}
+
+	session.couplingStep.QGAuthority = 1
+	e1 := session.evaluateGravityLocked()
+	if got := e1.effective.Sub(coupled).Norm(); got > 1e-9 {
+		t.Fatalf("authority=1 should produce coupled gravity, diff=%.6g", got)
+	}
+}
+
+func TestApplyControlsDoesNotRunAssistPolicy(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+	session, err := newGameSession("test-control-stage-separation", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+
+	input := gameControlInput{
+		LockAssist:     boolPtr(true),
+		AutoTrim:       true,
+		NavTopActive:   true,
+		NavTopGoalX:    session.craft.Position.X + 10000,
+		NavTopGoalY:    session.craft.Position.Y + 5000,
+		AssistSpeedCap: 0.2,
+	}
+	session.applyControlsLocked(input, session.dt)
+
+	if session.assistPhase != "" && session.assistPhase != "manual" {
+		t.Fatalf("applyControls stage must not run assist policy, got assist_phase=%q", session.assistPhase)
+	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func TestStepPublishesCouplingStepAsSingleTelemetrySource(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+	session, err := newGameSession("test-coupling-telemetry-source", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+
+	session.controls.ThetaTarget = -1.2
+	session.controls.QTarget = 900
+	session.controls.BetaTarget = 22
+	if _, err := session.Step(3, gameControlInput{}); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	state, err := session.State()
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+
+	if math.Abs(state.QGCraft-session.couplingStep.QGCraft) > 1e-9 {
+		t.Fatalf("qg craft telemetry mismatch state=%.9f step=%.9f", state.QGCraft, session.couplingStep.QGCraft)
+	}
+	if math.Abs(state.QGCraftDynamicTerm-session.couplingStep.QGDynamicTerm) > 1e-9 {
+		t.Fatalf("qg dynamic telemetry mismatch state=%.9f step=%.9f", state.QGCraftDynamicTerm, session.couplingStep.QGDynamicTerm)
+	}
+	if math.Abs(state.QGAuthority-session.couplingStep.QGAuthority) > 1e-9 {
+		t.Fatalf("qg authority telemetry mismatch state=%.9f step=%.9f", state.QGAuthority, session.couplingStep.QGAuthority)
+	}
+	if math.Abs(state.EffectiveInertialMass-session.couplingStep.InertialMass) > 1e-9 {
+		t.Fatalf("inertial mass telemetry mismatch state=%.9f step=%.9f", state.EffectiveInertialMass, session.couplingStep.InertialMass)
+	}
+	if math.Abs(state.EffectiveInertialScale-session.couplingStep.InertialScale) > 1e-9 {
+		t.Fatalf("inertial scale telemetry mismatch state=%.9f step=%.9f", state.EffectiveInertialScale, session.couplingStep.InertialScale)
+	}
+	if state.ChargeRegime != session.couplingStep.Regime {
+		t.Fatalf("charge regime telemetry mismatch state=%q step=%q", state.ChargeRegime, session.couplingStep.Regime)
+	}
+}
+
+func TestGameSessionForcesCanonicalCouplingGravityModel(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+	cfg.GravityModel.Type = "negmass"
+	session, err := newGameSession("test-canonical-gravity", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	if session.gravityModel != "coupling" {
+		t.Fatalf("expected canonical gravity model coupling, got %q", session.gravityModel)
+	}
+	state, err := session.State()
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	if state.GravityModel != "coupling" {
+		t.Fatalf("state should publish canonical gravity model coupling, got %q", state.GravityModel)
+	}
+}
+
+func TestStepRepairsTamperedGravityModelToCoupling(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+	session, err := newGameSession("test-canonical-repair", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	session.gravityModel = "negmass"
+	state, err := session.Step(1, gameControlInput{})
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if state.GravityModel != "coupling" {
+		t.Fatalf("step state should force coupling gravity model, got %q", state.GravityModel)
+	}
+	if session.gravityModel != "coupling" {
+		t.Fatalf("session should be repaired to coupling gravity model, got %q", session.gravityModel)
 	}
 }
 

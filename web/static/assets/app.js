@@ -1606,6 +1606,7 @@ const OSC_BETA_MAX = 30;
 const PLASMA_MIN = 0.0;
 const PLASMA_MAX = 1.0;
 const BROWSER_FRAME_INTERVAL_MS = 1000 / 60;
+const UI_BUILD_MARK = 'ui-hotfix-2026-04-28-ctrl-mirror-8';
 const TELEMETRY_GRAPH_KEYS = ['gravity', 'motion', 'power', 'aero', 'lock', 'control', 'fieldshape'];
 
 const state = createInitialState();
@@ -3835,6 +3836,7 @@ function maybeInitLab() {
     planetaryCamera: root.querySelector('[data-planetary-camera]'),
     planetaryZoom: root.querySelector('[data-planetary-zoom]'),
     speed: root.querySelector('[data-game-speed]'),
+    speedReadout: root.querySelector('[data-game-speed-readout]'),
     startGround: root.querySelector('[data-game-start-ground]'),
     holdAmpEnabled: root.querySelector('[data-hold-amp-enabled]'),
     holdAmpTarget: root.querySelector('[data-hold-amp-target]'),
@@ -3844,6 +3846,8 @@ function maybeInitLab() {
     holdYawTarget: root.querySelector('[data-hold-yaw-target]'),
     holdPitchEnabled: root.querySelector('[data-hold-pitch-enabled]'),
     holdPitchTarget: root.querySelector('[data-hold-pitch-target]'),
+    propLateral: root.querySelector('[data-prop-lateral]'),
+    propForward: root.querySelector('[data-prop-forward]'),
     oscOmegaTarget: root.querySelector('[data-osc-omega-target]'),
     oscQTarget: root.querySelector('[data-osc-q-target]'),
     oscBetaTarget: root.querySelector('[data-osc-beta-target]'),
@@ -3887,10 +3891,11 @@ function maybeInitLab() {
   }, { once: true });
 
   updateControlBarReadouts();
+  updateSimSpeedReadout();
   updateCraftScaleReadout();
   applyWarpDriveUiDefaults(selectedWarpDrive(), false);
   void fetchCalibrationSummary();
-  setStatus('ready');
+  setStatus(`ready • ${UI_BUILD_MARK}`);
   updateHUD(state.game.latest);
   closeGuideModal();
 }
@@ -3900,6 +3905,65 @@ function setStatus(message) {
     return;
   }
   state.refs.status.textContent = message;
+}
+
+function updateSimSpeedReadout() {
+  if (!state.refs?.speedReadout) {
+    return;
+  }
+  const speed = clampNumber(readNumberInput(state.refs?.speed, 1), 0.25, 8, 1);
+  state.refs.speedReadout.textContent = `${formatNumber(speed, 2)}x`;
+}
+
+function resetPropulsionStickIntent() {
+  if (state.refs?.propLateral) {
+    state.refs.propLateral.value = '0';
+  }
+  if (state.refs?.propForward) {
+    state.refs.propForward.value = '0';
+  }
+  if (state.refs?.holdAmpTarget) {
+    state.refs.holdAmpTarget.value = '0';
+  }
+  if (state.refs?.holdYawTarget) {
+    state.refs.holdYawTarget.value = '0';
+  }
+  if (state.refs?.holdPitchTarget) {
+    state.refs.holdPitchTarget.value = '0';
+  }
+  if (state.refs?.throttleTarget) {
+    state.refs.throttleTarget.value = '0';
+  }
+}
+
+function applyPropulsionStickIntent() {
+  if (!state.refs?.propLateral || !state.refs?.propForward) {
+    return;
+  }
+  const lateral = clampUnit(readNumberInput(state.refs.propLateral, 0));
+  const forward = clampUnit(readNumberInput(state.refs.propForward, 0));
+  const mag = clampNumber(Math.hypot(lateral, forward), 0, 1, 0);
+  const ampAxis = clampUnit(mag);
+  const yawAxis = clampUnit(lateral);
+  const pitchAxis = clampUnit(forward);
+  const throttle = clampNumber((Math.max(0, forward) * 0.82) - (Math.max(0, -forward) * 0.35), -1, 1, 0);
+  const plasma = clampNumber(0.10 + (0.65 * mag), 0, 1, 0);
+
+  if (state.refs.holdAmpTarget) {
+    state.refs.holdAmpTarget.value = ampAxis.toFixed(2);
+  }
+  if (state.refs.holdYawTarget) {
+    state.refs.holdYawTarget.value = yawAxis.toFixed(2);
+  }
+  if (state.refs.holdPitchTarget) {
+    state.refs.holdPitchTarget.value = pitchAxis.toFixed(2);
+  }
+  if (state.refs.throttleTarget) {
+    state.refs.throttleTarget.value = throttle.toFixed(2);
+  }
+  if (state.refs.plasmaTarget) {
+    state.refs.plasmaTarget.value = plasma.toFixed(2);
+  }
 }
 
 function flashStatusToast(message) {
@@ -4302,24 +4366,6 @@ function smartAssistTargets(sample, goal, uiWeight, uiVertical) {
     return {
       weight: brake ? 1.08 : 0.0,
       vertical: 0.0,
-      speedCap,
-      brake
-    };
-  }
-  if (key === 'descend') {
-    const baseVz = -Math.max(40, Math.min(220, speedCap * 0.18));
-    return {
-      weight: brake ? (1.0 + (0.25 * brakeScale)) : 1.55,
-      vertical: brake ? Math.min(-8, baseVz * (0.55 / brakeScale)) : baseVz,
-      speedCap,
-      brake
-    };
-  }
-  if (key === 'ascend') {
-    const baseVz = Math.max(60, Math.min(260, speedCap * 0.2));
-    return {
-      weight: brake ? (1.0 - (0.08 / brakeScale)) : -0.50,
-      vertical: brake ? Math.max(4, baseVz * (0.30 / brakeScale)) : baseVz,
       speedCap,
       brake
     };
@@ -4830,32 +4876,135 @@ function oscillatorTargetSummary(sample = state.game.latest) {
   return `osc:[omega ${formatNumber(osc.omega, 1)} Q ${formatNumber(osc.q, 1)} beta ${formatNumber(osc.beta, 3)} plasma ${formatNumber(plasma, 2)}]`;
 }
 
+function isSystemDriving() {
+  return Boolean(
+    state.input.lockAssist ||
+    state.input.navTopActive ||
+    state.input.navProfileActive ||
+    state.refs?.autoTrim?.checked ||
+    state.refs?.autoResonator?.checked
+  );
+}
+
+function setSystemDrivingComponentState(enabled) {
+  void enabled;
+}
+
+function mirrorAllDialsFromSample(sample) {
+  if (!sample || !state.refs) {
+    return;
+  }
+  const a = clampUnit(Number.parseFloat(sample.control_amp_axis));
+  const p = clampUnit(Number.parseFloat(sample.control_phi_axis));
+  const y = clampUnit(Number.parseFloat(sample.control_yaw_axis));
+  const t = clampUnit(Number.parseFloat(sample.control_pitch_axis));
+  if (state.refs.holdAmpTarget && Number.isFinite(a)) {
+    state.refs.holdAmpTarget.value = a.toFixed(2);
+  }
+  if (state.refs.holdPhiTarget && Number.isFinite(p)) {
+    state.refs.holdPhiTarget.value = p.toFixed(2);
+  }
+  if (state.refs.holdYawTarget && Number.isFinite(y)) {
+    state.refs.holdYawTarget.value = y.toFixed(2);
+  }
+  if (state.refs.holdPitchTarget && Number.isFinite(t)) {
+    state.refs.holdPitchTarget.value = t.toFixed(2);
+  }
+  if (state.refs.oscOmegaTarget && Number.isFinite(sample.control_omega_target)) {
+    const v = Number(sample.control_omega_target);
+    state.refs.oscOmegaTarget.value = v.toFixed(1);
+  }
+  if (state.refs.oscQTarget && Number.isFinite(sample.control_q_target)) {
+    const v = Number(sample.control_q_target);
+    state.refs.oscQTarget.value = v.toFixed(0);
+  }
+  if (state.refs.oscBetaTarget && Number.isFinite(sample.control_beta_target)) {
+    const v = Number(sample.control_beta_target);
+    state.refs.oscBetaTarget.value = v.toFixed(3);
+  }
+  if (state.refs.plasmaTarget && Number.isFinite(sample.control_plasma_target)) {
+    const v = Number(sample.control_plasma_target);
+    state.refs.plasmaTarget.value = v.toFixed(2);
+  }
+  if (state.refs.throttleTarget && Number.isFinite(sample.control_throttle_target)) {
+    const v = Number.isFinite(sample.control_throttle_applied)
+      ? Number(sample.control_throttle_applied)
+      : Number(sample.control_throttle_target);
+    state.refs.throttleTarget.value = v.toFixed(2);
+  }
+  if (state.refs.emChargeTarget && Number.isFinite(sample.control_em_charge_target)) {
+    const v = Number(sample.control_em_charge_target);
+    state.refs.emChargeTarget.value = v.toFixed(1);
+  }
+  if (state.refs.eFieldTarget && Number.isFinite(sample.control_e_field_target)) {
+    const v = Number(sample.control_e_field_target);
+    state.refs.eFieldTarget.value = v.toFixed(1);
+  }
+  if (state.refs.bFieldTarget && Number.isFinite(sample.control_b_field_target)) {
+    const v = Number(sample.control_b_field_target);
+    state.refs.bFieldTarget.value = v.toFixed(3);
+  }
+}
+
 function updateControlBarReadouts() {
   if (!state.refs?.controlReadouts) {
     return;
   }
-  const amp = clampUnit(readNumberInput(state.refs?.holdAmpTarget, 0));
-  const phi = clampUnit(readNumberInput(state.refs?.holdPhiTarget, 0));
-  const yaw = clampUnit(readNumberInput(state.refs?.holdYawTarget, 0));
-  const pitch = clampUnit(readNumberInput(state.refs?.holdPitchTarget, 0));
   const sample = state.game.latest;
+  const systemDriving = isSystemDriving();
+  setSystemDrivingComponentState(systemDriving);
+  const amp = systemDriving
+    ? clampUnit(Number.parseFloat(sample?.control_amp_axis))
+    : clampUnit(readNumberInput(state.refs?.holdAmpTarget, 0));
+  const phi = systemDriving
+    ? clampUnit(Number.parseFloat(sample?.control_phi_axis))
+    : clampUnit(readNumberInput(state.refs?.holdPhiTarget, 0));
+  const yaw = systemDriving
+    ? clampUnit(Number.parseFloat(sample?.control_yaw_axis))
+    : clampUnit(readNumberInput(state.refs?.holdYawTarget, 0));
+  const pitch = systemDriving
+    ? clampUnit(Number.parseFloat(sample?.control_pitch_axis))
+    : clampUnit(readNumberInput(state.refs?.holdPitchTarget, 0));
   const sAmp = Number.parseFloat(sample?.control_amp_target);
   const sPhi = Number.parseFloat(sample?.control_theta_target);
   const sYaw = Number.parseFloat(sample?.control_axis_yaw);
   const sPitch = Number.parseFloat(sample?.control_axis_pitch);
   const osc = currentOscillatorTargets();
+  const axisLabel = systemDriving ? 'SYS' : 'L';
+  const sysAxisAmp = clampUnit(Number.parseFloat(sample?.control_amp_axis));
+  const sysAxisPhi = clampUnit(Number.parseFloat(sample?.control_phi_axis));
+  const sysAxisYaw = clampUnit(Number.parseFloat(sample?.control_yaw_axis));
+  const sysAxisPitch = clampUnit(Number.parseFloat(sample?.control_pitch_axis));
+  const axisTouchEps = 0.015;
+  const ampTouch = Math.abs(sysAxisAmp) > axisTouchEps;
+  const phiTouch = Math.abs(sysAxisPhi) > axisTouchEps;
+  const yawTouch = Math.abs(sysAxisYaw) > axisTouchEps;
+  const pitchTouch = Math.abs(sysAxisPitch) > axisTouchEps;
 
   if (state.refs.controlReadouts.amp) {
-    state.refs.controlReadouts.amp.textContent = `L ${formatNumber(amp, 2)} | S ${formatNumber(sAmp, 3)}`;
+    state.refs.controlReadouts.amp.textContent = systemDriving
+      ? `${ampTouch ? 'SYS' : 'HOLD'} ${formatNumber(sAmp, 3)} | AX ${formatNumber(sysAxisAmp, 2)}`
+      : `${axisLabel} ${formatNumber(amp, 2)} | S ${formatNumber(sAmp, 3)}`;
   }
   if (state.refs.controlReadouts.phi) {
-    state.refs.controlReadouts.phi.textContent = `L ${formatNumber(phi, 2)} | S ${formatNumber(sPhi, 3)}`;
+    state.refs.controlReadouts.phi.textContent = systemDriving
+      ? `${phiTouch ? 'SYS' : 'HOLD'} ${formatNumber(sPhi, 3)} | AX ${formatNumber(sysAxisPhi, 2)}`
+      : `${axisLabel} ${formatNumber(phi, 2)} | S ${formatNumber(sPhi, 3)}`;
   }
   if (state.refs.controlReadouts.yaw) {
-    state.refs.controlReadouts.yaw.textContent = `L ${formatNumber(yaw, 2)} | S ${formatNumber(sYaw, 3)}`;
+    state.refs.controlReadouts.yaw.textContent = systemDriving
+      ? `${yawTouch ? 'SYS' : 'HOLD'} ${formatNumber(sYaw, 3)} | AX ${formatNumber(sysAxisYaw, 2)}`
+      : `${axisLabel} ${formatNumber(yaw, 2)} | S ${formatNumber(sYaw, 3)}`;
   }
   if (state.refs.controlReadouts.pitch) {
-    state.refs.controlReadouts.pitch.textContent = `L ${formatNumber(pitch, 2)} | S ${formatNumber(sPitch, 3)}`;
+    state.refs.controlReadouts.pitch.textContent = systemDriving
+      ? `${pitchTouch ? 'SYS' : 'HOLD'} ${formatNumber(sPitch, 3)} | AX ${formatNumber(sysAxisPitch, 2)}`
+      : `${axisLabel} ${formatNumber(pitch, 2)} | S ${formatNumber(sPitch, 3)}`;
+  }
+  if (state.refs.controlReadouts.propstick) {
+    const l = clampUnit(readNumberInput(state.refs?.propLateral, 0));
+    const f = clampUnit(readNumberInput(state.refs?.propForward, 0));
+    state.refs.controlReadouts.propstick.textContent = `L ${formatNumber(l, 2)} | F ${formatNumber(f, 2)}`;
   }
   if (state.refs.controlReadouts.omega) {
     state.refs.controlReadouts.omega.textContent = formatNumber(osc.omega, 2);
@@ -4870,7 +5019,15 @@ function updateControlBarReadouts() {
     state.refs.controlReadouts.plasma.textContent = formatNumber(currentPlasmaTarget(), 3);
   }
   if (state.refs.controlReadouts.throttle) {
-    state.refs.controlReadouts.throttle.textContent = formatNumber(readNumberInput(state.refs?.throttleTarget, Number.parseFloat(sample?.control_throttle_target)), 3);
+    const tApplied = Number.parseFloat(sample?.control_throttle_applied);
+    const tTarget = Number.parseFloat(sample?.control_throttle_target);
+    if (Number.isFinite(tApplied) && Number.isFinite(tTarget)) {
+      state.refs.controlReadouts.throttle.textContent = systemDriving
+        ? `SYS ${formatNumber(tApplied, 3)} | T ${formatNumber(tTarget, 3)}`
+        : `SYS ${formatNumber(tApplied, 3)} | T ${formatNumber(tTarget, 3)}`;
+    } else {
+      state.refs.controlReadouts.throttle.textContent = formatNumber(readNumberInput(state.refs?.throttleTarget, tTarget), 3);
+    }
   }
   if (state.refs.controlReadouts.emcharge) {
     state.refs.controlReadouts.emcharge.textContent = formatNumber(readNumberInput(state.refs?.emChargeTarget, Number.parseFloat(sample?.control_em_charge_target)), 1);
@@ -4901,6 +5058,7 @@ function centerControlBars() {
   if (state.refs?.holdPitchTarget) {
     state.refs.holdPitchTarget.value = '0';
   }
+  resetPropulsionStickIntent();
   updateControlBarReadouts();
   setStatus('warp setpoint centered');
 }
@@ -4931,6 +5089,8 @@ function syncControlBarsToSample(sample) {
   setInputNumber(state.refs?.holdPhiTarget, 0, 2);
   setInputNumber(state.refs?.holdYawTarget, 0, 2);
   setInputNumber(state.refs?.holdPitchTarget, 0, 2);
+  setInputNumber(state.refs?.propLateral, 0, 2);
+  setInputNumber(state.refs?.propForward, 0, 2);
   setInputNumber(state.refs?.oscOmegaTarget, Number.parseFloat(sample.control_omega_target), 1);
   setInputNumber(state.refs?.oscQTarget, Number.parseFloat(sample.control_q_target), 0);
   setInputNumber(state.refs?.oscBetaTarget, Number.parseFloat(sample.control_beta_target), 2);
@@ -4946,56 +5106,9 @@ function syncUnlockedControlBarsToSample(sample) {
   if (!sample) {
     return;
   }
-  const autoTrimRequested = Boolean(state.refs?.autoTrim?.checked);
-  const autoResonator = Boolean(state.refs?.autoResonator?.checked);
-  const navActive = Boolean(state.input.navTopActive || state.input.navProfileActive);
-  const controllerActive = autoTrimRequested || navActive || state.input.lockAssist;
-  if (autoResonator || controllerActive) {
-    if (state.refs?.oscOmegaTarget && Number.isFinite(sample.control_omega_target)) {
-      state.refs.oscOmegaTarget.value = Number(sample.control_omega_target).toFixed(1);
-    }
-    if (state.refs?.oscQTarget && Number.isFinite(sample.control_q_target)) {
-      state.refs.oscQTarget.value = Number(sample.control_q_target).toFixed(0);
-    }
-    if (state.refs?.oscBetaTarget && Number.isFinite(sample.control_beta_target)) {
-      state.refs.oscBetaTarget.value = Number(sample.control_beta_target).toFixed(3);
-    }
-  }
-  if (controllerActive) {
-    // Show live assist/autopilot commands directly on the lever sliders so
-    // pilot can see what the controller is actively applying each step.
-    const a = clampUnit(Number.parseFloat(sample.control_amp_axis));
-    const p = clampUnit(Number.parseFloat(sample.control_phi_axis));
-    const y = clampUnit(Number.parseFloat(sample.control_yaw_axis));
-    const t = clampUnit(Number.parseFloat(sample.control_pitch_axis));
-    if (!state.refs?.holdAmpEnabled?.checked && state.refs?.holdAmpTarget && Number.isFinite(a)) {
-      state.refs.holdAmpTarget.value = a.toFixed(2);
-    }
-    if (!state.refs?.holdPhiEnabled?.checked && state.refs?.holdPhiTarget && Number.isFinite(p)) {
-      state.refs.holdPhiTarget.value = p.toFixed(2);
-    }
-    if (!state.refs?.holdYawEnabled?.checked && state.refs?.holdYawTarget && Number.isFinite(y)) {
-      state.refs.holdYawTarget.value = y.toFixed(2);
-    }
-    if (!state.refs?.holdPitchEnabled?.checked && state.refs?.holdPitchTarget && Number.isFinite(t)) {
-      state.refs.holdPitchTarget.value = t.toFixed(2);
-    }
-    if (state.refs?.plasmaTarget && Number.isFinite(sample.control_plasma_target)) {
-      state.refs.plasmaTarget.value = Number(sample.control_plasma_target).toFixed(2);
-    }
-    if (state.refs?.throttleTarget && Number.isFinite(sample.control_throttle_target)) {
-      state.refs.throttleTarget.value = Number(sample.control_throttle_target).toFixed(2);
-    }
-    if (state.refs?.emChargeTarget && Number.isFinite(sample.control_em_charge_target)) {
-      state.refs.emChargeTarget.value = Number(sample.control_em_charge_target).toFixed(1);
-    }
-    if (state.refs?.eFieldTarget && Number.isFinite(sample.control_e_field_target)) {
-      state.refs.eFieldTarget.value = Number(sample.control_e_field_target).toFixed(1);
-    }
-    if (state.refs?.bFieldTarget && Number.isFinite(sample.control_b_field_target)) {
-      state.refs.bFieldTarget.value = Number(sample.control_b_field_target).toFixed(3);
-    }
-  }
+  // Always mirror backend-applied control values while the session is running.
+  // This guarantees UI dials cannot drift/stall relative to sim truth.
+  mirrorAllDialsFromSample(sample);
   updateControlBarReadouts();
 }
 
@@ -5161,9 +5274,8 @@ function applyAssistPreset(name) {
   if (!state.refs) {
     return;
   }
-  const currentAlt = Math.max(0, Number.parseFloat(state.game.latest?.altitude) || 0);
   state.input.lockAssist = true;
-  state.input.assistGoal = key;
+  state.input.assistGoal = 'hold_altitude';
   if (state.refs.autoResonator) {
     state.refs.autoResonator.checked = true;
   }
@@ -5174,28 +5286,10 @@ function applyAssistPreset(name) {
   unlockAllHoldLocks('assist request: control locks released');
 
   switch (key) {
-    case 'hover':
-      setInputNumber(state.refs.autoWeight, 0.0, 2);
-      setInputNumber(state.refs.autoVertical, 0.0, 2);
-      setInputNumber(state.refs.autoAltitude, currentAlt, 1);
-      setStatus('assist goal: hover (persistent)');
-      break;
     case 'neutral':
       setInputNumber(state.refs.autoWeight, 1.0, 2);
       setInputNumber(state.refs.autoVertical, 0.0, 2);
-      setStatus('assist goal: normal-g (persistent)');
-      break;
-    case 'ascend':
-      setInputNumber(state.refs.autoWeight, -0.50, 2);
-      setInputNumber(state.refs.autoVertical, 180.0, 1);
-      setInputNumber(state.refs.autoAltitude, currentAlt + 3000, 1);
-      setStatus('assist goal: ascend (persistent)');
-      break;
-    case 'descend':
-      setInputNumber(state.refs.autoWeight, 1.55, 2);
-      setInputNumber(state.refs.autoVertical, -140.0, 1);
-      setInputNumber(state.refs.autoAltitude, Math.max(0, currentAlt - 3000), 1);
-      setStatus('assist goal: descend (persistent)');
+      setStatus('assist profile: normal-g');
       break;
     default:
       state.input.assistGoal = 'off';
@@ -5746,12 +5840,9 @@ async function startGameSession() {
     }
     updateHUD(state.game.latest);
     renderLatestSample();
-    const mode = String(state.game.latest?.gravity_model || '').toLowerCase();
     const couplerEnabled = Boolean(state.game.latest?.coupler_enabled);
     if (!couplerEnabled) {
       setStatus('running free_play • coupler off • pilot/assist controls are telemetry-only here');
-    } else if (mode && mode !== 'coupling') {
-      setStatus(`running free_play • ${mode} model • coupler controls are telemetry-only here`);
     } else {
       setStatus(`running free_play • planet=${planetPreset} • ship=${shipType} • scale=${formatNumber(craftScale, 2)}x • map=${state.game.mapMode} • dt=${state.game.dt.toFixed(4)} s • ${startOnGround ? 'ground start' : 'default start'}`);
     }
@@ -6199,6 +6290,11 @@ function setupEvents() {
       }
       return;
     }
+    if (target.matches('[data-game-speed]')) {
+      updateSimSpeedReadout();
+      setStatus(`sim speed ${formatNumber(clampNumber(readNumberInput(state.refs?.speed, 1), 0.25, 8, 1), 2)}x`);
+      return;
+    }
     if (target.matches('[data-ship-type]')) {
       updateHUD(state.game.latest);
       return;
@@ -6216,13 +6312,8 @@ function setupEvents() {
         setStatus('assist disabled');
       } else {
         unlockAllHoldLocks('auto trim enabled: control locks released');
-        if (!state.input.assistGoal || state.input.assistGoal === 'off') {
-          state.input.assistGoal = 'hover';
-          setInputNumber(state.refs?.autoWeight, 0.0, 2);
-          setInputNumber(state.refs?.autoVertical, 0.0, 2);
-          setInputNumber(state.refs?.autoAltitude, Math.max(0, Number.parseFloat(state.game.latest?.altitude) || 0), 1);
-        }
-        setStatus(`assist enabled • goal=${state.input.assistGoal}`);
+        state.input.assistGoal = 'hold_altitude';
+        setStatus('assist enabled • target altitude hold active');
       }
       updateHUD(state.game.latest);
       return;
@@ -6243,9 +6334,13 @@ function setupEvents() {
       target.matches('[data-assist-brake-gain]') ||
       target.matches('[data-nav-max-speed]') ||
       target.matches('[data-nav-stop-radius]') ||
+      target.matches('[data-auto-weight]') ||
+      target.matches('[data-auto-vertical]') ||
       target.matches('[data-auto-altitude]') ||
       target.matches('[data-hold-yaw-target]') ||
       target.matches('[data-hold-pitch-target]') ||
+      target.matches('[data-prop-lateral]') ||
+      target.matches('[data-prop-forward]') ||
       target.matches('[data-hold-amp-enabled]') ||
       target.matches('[data-hold-phi-enabled]') ||
       target.matches('[data-hold-yaw-enabled]') ||
@@ -6261,12 +6356,18 @@ function setupEvents() {
         target.matches('[data-em-charge-target]') ||
         target.matches('[data-e-field-target]') ||
         target.matches('[data-b-field-target]') ||
+        target.matches('[data-prop-lateral]') ||
+        target.matches('[data-prop-forward]') ||
         target.matches('[data-hold-amp-enabled]') ||
         target.matches('[data-hold-phi-enabled]') ||
         target.matches('[data-hold-yaw-enabled]') ||
         target.matches('[data-hold-pitch-enabled]')
       ) {
         clearNavGoals('nav goals cleared by direct control override');
+        if (target.matches('[data-prop-lateral]') || target.matches('[data-prop-forward]')) {
+          unlockAllHoldLocks('propulsion stick: control locks released');
+          applyPropulsionStickIntent();
+        }
       }
       syncUnlockedControlBarsToSample(state.game.latest);
       updateControlBarReadouts();
@@ -6281,6 +6382,7 @@ function setupEvents() {
     }
     if (
       target.matches('[data-craft-scale]') ||
+      target.matches('[data-game-speed]') ||
       target.matches('[data-hold-amp-target]') ||
       target.matches('[data-hold-phi-target]') ||
       target.matches('[data-osc-omega-target]') ||
@@ -6296,9 +6398,13 @@ function setupEvents() {
       target.matches('[data-assist-brake-gain]') ||
       target.matches('[data-nav-max-speed]') ||
       target.matches('[data-nav-stop-radius]') ||
+      target.matches('[data-auto-weight]') ||
+      target.matches('[data-auto-vertical]') ||
       target.matches('[data-auto-altitude]') ||
       target.matches('[data-hold-yaw-target]') ||
-      target.matches('[data-hold-pitch-target]')
+      target.matches('[data-hold-pitch-target]') ||
+      target.matches('[data-prop-lateral]') ||
+      target.matches('[data-prop-forward]')
     ) {
       if (
         target.matches('[data-hold-amp-target]') ||
@@ -6309,13 +6415,23 @@ function setupEvents() {
         target.matches('[data-throttle-target]') ||
         target.matches('[data-em-charge-target]') ||
         target.matches('[data-e-field-target]') ||
-        target.matches('[data-b-field-target]')
+        target.matches('[data-b-field-target]') ||
+        target.matches('[data-prop-lateral]') ||
+        target.matches('[data-prop-forward]')
       ) {
         clearNavGoals('nav goals cleared by direct control override');
+        if (target.matches('[data-prop-lateral]') || target.matches('[data-prop-forward]')) {
+          unlockAllHoldLocks('propulsion stick: control locks released');
+          applyPropulsionStickIntent();
+        }
       }
       if (target.matches('[data-craft-scale]')) {
         updateCraftScaleReadout();
         updateHUD(state.game.latest);
+      }
+      if (target.matches('[data-game-speed]')) {
+        updateSimSpeedReadout();
+        setStatus(`sim speed ${formatNumber(clampNumber(readNumberInput(state.refs?.speed, 1), 0.25, 8, 1), 2)}x`);
       }
       updateControlBarReadouts();
     }
@@ -6324,13 +6440,29 @@ function setupEvents() {
   document.addEventListener('pointerup', (event) => {
     state.game.worldCameraDragging = false;
     maybeSpringReturnLever(event.target);
+    if (state.input?.propulsionStickActive) {
+      state.input.propulsionStickActive = false;
+      resetPropulsionStickIntent();
+      updateControlBarReadouts();
+    }
   }, true);
   document.addEventListener('pointercancel', () => {
     state.game.worldCameraDragging = false;
+    if (state.input?.propulsionStickActive) {
+      state.input.propulsionStickActive = false;
+      resetPropulsionStickIntent();
+      updateControlBarReadouts();
+    }
   }, true);
   document.addEventListener('pointerdown', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.matches('[data-prop-lateral]') || target.matches('[data-prop-forward]')) {
+      state.input.propulsionStickActive = true;
+      unlockAllHoldLocks('propulsion stick: control locks released');
+      clearNavGoals('nav goals cleared by direct control override');
       return;
     }
     if (target.matches('[data-game-canvas-top]') || target.matches('[data-game-canvas-side]')) {

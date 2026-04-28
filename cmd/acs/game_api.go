@@ -362,12 +362,18 @@ type gameStepState struct {
 
 	NegMassConvention      string  `json:"negmass_convention"`
 	QGCraft                float64 `json:"qg_craft"`
+	QGCraftBase            float64 `json:"qg_craft_base"`
+	QGCraftDynamicTerm     float64 `json:"qg_craft_dynamic_term"`
+	QGAuthority            float64 `json:"qg_authority"`
 	QGPrimary              float64 `json:"qg_primary"`
 	InertialMassSign       float64 `json:"inertial_mass_sign"`
 	RunawayAccelMag        float64 `json:"runaway_accel_mag"`
 	RunawayAccelLimit      float64 `json:"runaway_accel_limit"`
 	RunawayFlag            bool    `json:"runaway_flag"`
 	RunawayExpectedUnderC2 bool    `json:"runaway_expected_c2"`
+	EffectiveInertialMass  float64 `json:"effective_inertial_mass"`
+	EffectiveInertialScale float64 `json:"effective_inertial_scale"`
+	ChargeRegime           string  `json:"charge_regime"`
 
 	ControlAmpTarget      float64 `json:"control_amp_target"`
 	ControlThetaTarget    float64 `json:"control_theta_target"`
@@ -376,6 +382,7 @@ type gameStepState struct {
 	ControlBetaTarget     float64 `json:"control_beta_target"`
 	ControlPlasmaTarget   float64 `json:"control_plasma_target"`
 	ControlThrottleTarget float64 `json:"control_throttle_target"`
+	ControlThrottleApplied float64 `json:"control_throttle_applied"`
 	ControlEMChargeTarget float64 `json:"control_em_charge_target"`
 	ControlEFieldTarget   float64 `json:"control_e_field_target"`
 	ControlBFieldTarget   float64 `json:"control_b_field_target"`
@@ -454,12 +461,26 @@ type gameGravityEval struct {
 
 	negMassConvention      string
 	qgCraft                float64
+	qgCraftBase            float64
+	qgCraftDynamicTerm     float64
+	qgAuthority            float64
 	qgPrimary              float64
 	inertialMassSign       float64
 	runawayAccelMag        float64
 	runawayAccelLimit      float64
 	runawayFlag            bool
 	runawayExpectedUnderC2 bool
+}
+
+type gameCouplingState struct {
+	QGCraft        float64
+	QGBase         float64
+	QGDynamicTerm  float64
+	QGAuthority    float64
+	InertialMass   float64
+	InertialScale  float64
+	InertialSign   float64
+	Regime         string
 }
 
 type gameSession struct {
@@ -494,6 +515,9 @@ type gameSession struct {
 	negMassQGCraft      float64
 	negMassRunawayLimit float64
 	negMassOverrides    map[string]float64
+	qgDynamicState      float64
+	qgAuthorityState    float64
+	couplingStep        gameCouplingState
 	bodyIntegrator      string
 	bodySubsteps        int
 
@@ -736,10 +760,7 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 		return nil, err
 	}
 
-	gravityModel := strings.ToLower(strings.TrimSpace(cfg.GravityModel.Type))
-	if gravityModel == "" {
-		gravityModel = "coupling"
-	}
+	gravityModel := "coupling"
 	warpDrive := normalizedWarpDriveSelection(warpDriveOverride)
 
 	couplerState := coupler.New(cfg.CouplerRuntime())
@@ -856,6 +877,8 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 		negMassQGCraft:      negMassQGCraft,
 		negMassRunawayLimit: negMassRunawayLimit,
 		negMassOverrides:    copyChargeOverrides(cfg.GravityModel.NegMass.QGOverrides),
+		qgDynamicState:      0,
+		qgAuthorityState:    0,
 		bodyIntegrator:      "semi_implicit",
 		bodySubsteps:        1,
 		controls: gameControlState{
@@ -957,10 +980,7 @@ func normalizedWarpDriveSelection(raw string) string {
 }
 
 func warpDriveForScenario(cfg config.Scenario) string {
-	gravityModel := strings.ToLower(strings.TrimSpace(cfg.GravityModel.Type))
-	if gravityModel == "" {
-		gravityModel = "coupling"
-	}
+	_ = cfg
 	return "resonant_pll"
 }
 
@@ -1551,6 +1571,8 @@ func (gs *gameSession) State() (gameStepState, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
+	gs.enforceCanonicalModeLocked()
+	gs.updateCouplingStateLocked(0)
 	eval := gs.evaluateGravityLocked()
 	gs.touchLocked()
 	return gs.buildStateLocked(eval), nil
@@ -1569,7 +1591,11 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 
 	lastEval := gameGravityEval{}
 	for i := 0; i < steps; i++ {
+		gs.enforceCanonicalModeLocked()
+		gs.updateDominantPrimaryLocked()
 		gs.applyControlsLocked(input, gs.dt)
+		gs.applyAssistAutopilotLocked(input, gs.dt)
+		gs.updateCouplingStateLocked(gs.dt)
 		lastEval = gs.evaluateGravityLocked()
 		gs.updateDerivedActuationLocked(lastEval)
 
@@ -1577,7 +1603,12 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 		forceEval := physics.EvaluateForces(gs.craft, gs.env, primary, lastEval.effective)
 		forceEval = gs.enforceEnergyBudgetLocked(forceEval, gs.dt, primary, lastEval.effective)
 		gs.integrateLimitHistoryLocked(forceEval, gs.dt)
-		gs.craft.IntegrateSemiImplicit(gs.dt, forceEval.Net, mathx.Vec3{})
+		effMass := gs.couplingStep.InertialMass
+		netForce := forceEval.Net
+		if math.Abs(effMass) > 1e-9 && gs.craft.Mass > 1e-9 {
+			netForce = netForce.Scale(gs.craft.Mass / effMass)
+		}
+		gs.craft.IntegrateSemiImplicit(gs.dt, netForce, mathx.Vec3{})
 
 		if gs.env.Ground.Enabled {
 			ground := gs.groundBodyLocked()
@@ -1596,6 +1627,7 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 				physics.IntegrateBodiesSemiImplicit(bodyDt, gs.env.G, gs.bodies)
 			}
 		}
+		gs.updateDominantPrimaryLocked()
 		if !gs.craft.Position.IsFinite() || !gs.craft.Velocity.IsFinite() {
 			return gameStepState{}, fmt.Errorf("state diverged at step %d", gs.step)
 		}
@@ -1608,6 +1640,13 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 
 	gs.touchLocked()
 	return gs.buildStateLocked(lastEval), nil
+}
+
+func (gs *gameSession) enforceCanonicalModeLocked() {
+	if gs == nil {
+		return
+	}
+	gs.gravityModel = "coupling"
 }
 
 func (gs *gameSession) integrateLimitHistoryLocked(f physics.ForceBreakdown, dt float64) {
@@ -1774,232 +1813,16 @@ func (gs *gameSession) updateDerivedActuationLocked(eval gameGravityEval) {
 	gs.craft.EM.ChargeC = gs.controls.EMChargeTarget
 }
 
-func sanitizeOr(v, fallback float64) float64 {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return fallback
-	}
-	return v
-}
-
-func (gs *gameSession) applyAssistAutopilotLocked(input gameControlInput, dt float64) {
-	if gs == nil {
-		return
-	}
-	gs.assistPhase = "manual"
-	gs.navDistance = 0
-	gs.navVAlong = 0
-	gs.coastCapture = false
-	gs.navTopReached = false
-	gs.navProfileReached = false
-	if !gs.controls.LockAssist || !input.AutoTrim {
-		return
-	}
-	gs.assistPhase = "assist"
-	ampLocked := input.HoldAmpLock
-	phiLocked := input.HoldPhiLock
-	yawLocked := input.HoldYawLock
-	pitchLocked := input.HoldPitchLock
-	assistGoalKey := strings.ToLower(strings.TrimSpace(input.AssistGoal))
-	primary := gs.primaryBodyLocked()
-	up := gs.craft.Position.Sub(primary.Position).Normalize()
-	if up.Norm2() == 0 {
-		up = mathx.Vec3{Z: 1}
-	}
-	eval := gs.evaluateGravityLocked()
-	downRaw := -eval.raw.Dot(up)
-	downEff := -eval.effective.Dot(up)
-	weightRatio := 1.0
-	if math.Abs(downRaw) > 1e-9 {
-		weightRatio = downEff / downRaw
-	}
-	altitudeNow := math.Max(0, gs.craft.Position.Sub(primary.Position).Norm()-primary.Radius)
-	targetAltitude := math.Max(0, sanitizeOr(input.AutoAltitude, altitudeNow))
-	targetWeight := sanitizeOr(input.AutoWeight, 1.0)
-	targetVertical := sanitizeOr(input.AutoVertical, 0.0)
-	altErr := mathx.Clamp(targetAltitude-altitudeNow, -1e8, 1e8)
-	verticalVelLocal := gs.craft.Velocity.Dot(up)
-	useAltitudeHold := input.NavProfileActive || assistGoalKey == "hover" || assistGoalKey == "ascend" || assistGoalKey == "descend"
-	if useAltitudeHold {
-		targetVertical += mathx.Clamp(altErr*0.08, -900, 900)
-	}
-	if !input.NavProfileActive {
-		gs.navProfileWasOn = false
-	}
-	if input.NavProfileActive && !phiLocked {
-		gs.assistPhase = "nav_profile"
-		targetVertical += mathx.Clamp(altErr*0.06, -320, 320)
-		prevErr := gs.navProfilePrevErr
-		if !gs.navProfileWasOn {
-			prevErr = altErr
-			gs.navProfileWasOn = true
-		}
-		crossedTarget := (prevErr > 0 && altErr <= 0) || (prevErr < 0 && altErr >= 0)
-		if input.NavTopActive {
-			gs.navProfileReached = math.Abs(altErr) <= 60 && math.Abs(verticalVelLocal) <= 10
-		} else {
-			// Profile-only command means "go to this altitude and clear"; crossing
-			// the altitude should be sufficient even at high vertical speed.
-			gs.navProfileReached = crossedTarget || math.Abs(altErr) <= 80
-		}
-		gs.navProfilePrevErr = altErr
-	}
-	forward, right := tangentBasisFromUp(up)
-	angRate := gs.craft.AngularVelocity.Norm()
-	stability := mathx.Clamp(1.0-(angRate/2.8), 0.15, 1.0)
-
-	if input.NavTopActive && !yawLocked && !pitchLocked {
-		navErrX := input.NavTopGoalX - gs.craft.Position.X
-		navErrY := input.NavTopGoalY - gs.craft.Position.Y
-		navForwardErr := navErrX
-		navRightErr := navErrY
-		dist := math.Hypot(navErrX, navErrY)
-		if strings.EqualFold(strings.TrimSpace(input.NavTopGoalMode), "planetary") {
-			craftRel := gs.craft.Position.Sub(primary.Position)
-			goalRel := mathx.Vec3{X: input.NavTopGoalX, Y: input.NavTopGoalY, Z: sanitizeOr(input.NavTopGoalZ, craftRel.Z)}
-			cMag := craftRel.Norm()
-			gMag := goalRel.Norm()
-			if cMag > 1e-6 && gMag > 1e-6 {
-				cu := craftRel.Scale(1 / cMag)
-				gu := goalRel.Scale(1 / gMag)
-				dot := mathx.Clamp(cu.Dot(gu), -1, 1)
-				ang := math.Acos(dot)
-				t := gu.Sub(cu.Scale(dot))
-				tm := t.Norm()
-				if tm > 1e-6 {
-					arc := ang * math.Max(1, 0.5*(cMag+gMag))
-					tDir := t.Scale(1 / tm)
-					navForwardErr = tDir.Dot(forward) * arc
-					navRightErr = tDir.Dot(right) * arc
-					dist = math.Abs(arc)
-				}
-			}
-		} else {
-			navForwardErr = navErrX*forward.X + navErrY*forward.Y
-			navRightErr = navErrX*right.X + navErrY*right.Y
-		}
-		navYawCmd := mathx.Clamp(navRightErr/1500, -1, 1) * stability
-		navPitchCmd := mathx.Clamp(-navForwardErr/1700, -1, 1) * stability
-		gs.controls.AxisYaw = mathx.WrapAngle(gs.controls.AxisYaw + (navYawCmd*0.72)*gs.limits.YawAxisRate*dt)
-		gs.controls.AxisPitch = mathx.Clamp(gs.controls.AxisPitch+(navPitchCmd*0.64)*gs.limits.PitchAxisRate*dt, gs.limits.MinAxisPitch, gs.limits.MaxAxisPitch)
-		lateralDemand := math.Hypot(navYawCmd, navPitchCmd)
-		if !ampLocked {
-			gs.controls.AmpTarget = mathx.Clamp(gs.controls.AmpTarget+lateralDemand*0.24*gs.limits.AmpAxisRate*dt, gs.couplerState.Params.MinAmplitude, gs.couplerState.Params.MaxAmplitude)
-		}
-
-		vAlong := 0.0
-		if dist > 1e-6 {
-			alongDir := forward.Scale(navForwardErr).Add(right.Scale(navRightErr))
-			if alongDir.Norm2() > 1e-9 {
-				u := alongDir.Normalize()
-				vAlong = gs.craft.Velocity.Dot(u)
-			}
-		}
-		// Combine horizontal map-goal and profile altitude-goal into one pursuit
-		// metric so speed planning and braking solve both simultaneously.
-		distCombined := dist
-		vAlongCombined := vAlong
-		if input.NavProfileActive {
-			distCombined = math.Hypot(dist, math.Abs(altErr))
-			if distCombined > 1e-6 {
-				altToward := verticalVelLocal
-				if altErr < 0 {
-					altToward = -verticalVelLocal
-				}
-				vAlongCombined = ((vAlong * dist) + (altToward * math.Abs(altErr))) / distCombined
-			}
-		}
-		gs.navDistance = distCombined
-		gs.navVAlong = vAlongCombined
-		speedNow := gs.craft.Velocity.Norm()
-		vCap := mathx.Clamp(sanitizeOr(input.NavMaxSpeed, sanitizeOr(input.AssistSpeedCap, 320)*1000), 20, 8000)
-		stopR := mathx.Clamp(sanitizeOr(input.NavStopRadius, 120), 5, 5000)
-		brakeGain := mathx.Clamp(sanitizeOr(input.AssistBrakeGain, 1.0), 0.1, 3.0)
-		aBrake := 70 + (180 * brakeGain)
-		stopErr := math.Max(0, distCombined-stopR)
-		brakeDistance := math.Max(1, (vAlongCombined*vAlongCombined)/(2*aBrake)+stopR)
-		brakeNow := distCombined <= brakeDistance || speedNow > vCap
-		if brakeNow {
-			gs.assistPhase = "nav_brake"
-		} else {
-			gs.assistPhase = "nav_push"
-		}
-		speedTarget := math.Min(vCap, math.Sqrt(math.Max(0, 2*aBrake*stopErr)))
-		speedErr := mathx.Clamp(speedTarget-vAlongCombined, -5000, 5000)
-		gs.controls.ThrottleTarget = mathx.Clamp((speedErr/math.Max(35, vCap*0.30))+(func() float64 {
-			if brakeNow {
-				return -0.12
-			}
-			return 0.08
-		}()), gs.limits.MinThrottleTarget, gs.limits.MaxThrottleTarget)
-		plasmaBase := 0.10
-		if speedNow > 0.8*vCap {
-			plasmaBase = 0.24
-		}
-		plasmaBrake := 0.0
-		if brakeNow {
-			plasmaBrake = 0.45
-		}
-		gs.controls.PlasmaTarget = mathx.Clamp(plasmaBase+plasmaBrake+(math.Max(0, speedNow-vCap)/math.Max(40, vCap)), gs.limits.MinPlasmaTarget, gs.limits.MaxPlasmaTarget)
-		approach := mathx.Clamp(stopErr/math.Max(100, stopR*8), 0, 1)
-		gs.controls.EFieldTarget = mathx.Clamp((func() float64 {
-			if brakeNow {
-				return 2800
-			}
-			return 1800
-		}())+(900*approach), gs.limits.MinEFieldTarget, gs.limits.MaxEFieldTarget)
-		gs.controls.BFieldTarget = mathx.Clamp((func() float64 {
-			if brakeNow {
-				return 0.26
-			}
-			return 0.16
-		}())+(0.08*approach), gs.limits.MinBFieldTarget, gs.limits.MaxBFieldTarget)
-		gs.controls.EMChargeTarget = mathx.Clamp((func() float64 {
-			if brakeNow {
-				return 1300
-			}
-			return 700
-		}())+(900*approach), gs.limits.MinEMChargeTarget, gs.limits.MaxEMChargeTarget)
-		gs.controls.QTarget = mathx.Clamp(math.Max(gs.controls.QTarget, 220+(260*approach)), gs.limits.MinQTarget, gs.limits.MaxQTarget)
-		gs.controls.BetaTarget = mathx.Clamp(math.Max(gs.controls.BetaTarget, 2.4+(2.4*approach)), gs.limits.MinBetaTarget, gs.limits.MaxBetaTarget)
-		circularBand := math.Abs(speedNow-math.Sqrt(math.Max(0, gameBigG*primary.Mass/math.Max(primary.Radius+altitudeNow, 1)))) <= math.Max(30, 0.16*math.Max(1, math.Sqrt(math.Max(0, gameBigG*primary.Mass/math.Max(primary.Radius+altitudeNow, 1)))))
-		gs.coastCapture = distCombined <= math.Max(stopR*1.8, 80) && math.Abs(verticalVelLocal) <= 10 && circularBand
-		if gs.coastCapture {
-			gs.assistPhase = "coast_capture"
-		}
-		gs.navTopReached = distCombined <= stopR && speedNow <= math.Max(8, 0.06*vCap)
-	} else if input.NavTopActive {
-		gs.assistPhase = "nav_blocked_locked"
-	} else {
-		// No horizontal goal active: decay lateral steering toward neutral so
-		// profile-only navigation does not keep seeking on X/Y axes.
-		gs.controls.AxisYaw = mathx.WrapAngle(gs.controls.AxisYaw * math.Max(0, 1-(2.2*dt)))
-		gs.controls.AxisPitch = mathx.Clamp(gs.controls.AxisPitch*math.Max(0, 1-(2.2*dt)), gs.limits.MinAxisPitch, gs.limits.MaxAxisPitch)
-	}
-	if angRate > 2.8 && (!yawLocked || !pitchLocked) {
-		gs.assistPhase = "gyro_recover"
-		gs.controls.ThrottleTarget = mathx.Clamp(gs.controls.ThrottleTarget*0.7, gs.limits.MinThrottleTarget, gs.limits.MaxThrottleTarget)
-		if !ampLocked {
-			gs.controls.AmpTarget = mathx.Clamp(gs.controls.AmpTarget*0.85, gs.couplerState.Params.MinAmplitude, gs.couplerState.Params.MaxAmplitude)
-		}
-	}
-
-	verticalErr := mathx.Clamp(targetVertical-verticalVelLocal, -100000, 100000)
-	weightErr := mathx.Clamp(targetWeight-weightRatio, -1000, 1000)
-	if !phiLocked {
-		gs.controls.ThetaTarget = mathx.Clamp(gs.controls.ThetaTarget+((weightErr*0.25)+(verticalErr*0.0020))*gs.limits.PhiAxisRate*dt, gs.limits.MinThetaTarget, gs.limits.MaxThetaTarget)
-	}
-}
-
 func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	ampAxis := mathx.Clamp(input.AmpAxis, -1, 1)
 	phiAxis := mathx.Clamp(input.PhiAxis, -1, 1)
 	yawAxis := mathx.Clamp(input.YawAxis, -1, 1)
 	pitchAxis := mathx.Clamp(input.PitchAxis, -1, 1)
 
-	gs.controls.AmpAxis = ampAxis
-	gs.controls.PhiAxis = phiAxis
-	gs.controls.YawAxis = yawAxis
-	gs.controls.PitchAxis = pitchAxis
+	prevAmpTarget := gs.controls.AmpTarget
+	prevThetaTarget := gs.controls.ThetaTarget
+	prevAxisYaw := gs.controls.AxisYaw
+	prevAxisPitch := gs.controls.AxisPitch
 	if !math.IsNaN(input.OmegaTarget) && !math.IsInf(input.OmegaTarget, 0) {
 		gs.controls.OmegaTarget = mathx.Clamp(input.OmegaTarget, gs.limits.MinOmegaTarget, gs.limits.MaxOmegaTarget)
 	}
@@ -2036,7 +1859,21 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	gs.controls.ThetaTarget = mathx.Clamp(gs.controls.ThetaTarget+phiAxis*gs.limits.PhiAxisRate*dt, gs.limits.MinThetaTarget, gs.limits.MaxThetaTarget)
 	gs.controls.AxisYaw = mathx.WrapAngle(gs.controls.AxisYaw + yawAxis*gs.limits.YawAxisRate*dt)
 	gs.controls.AxisPitch = mathx.Clamp(gs.controls.AxisPitch+pitchAxis*gs.limits.PitchAxisRate*dt, gs.limits.MinAxisPitch, gs.limits.MaxAxisPitch)
-	gs.applyAssistAutopilotLocked(input, dt)
+	if dt > 1e-9 {
+		ampAxisApplied := (gs.controls.AmpTarget - prevAmpTarget) / (gs.limits.AmpAxisRate * dt)
+		phiAxisApplied := (gs.controls.ThetaTarget - prevThetaTarget) / (gs.limits.PhiAxisRate * dt)
+		yawAxisApplied := mathx.WrapAngle(gs.controls.AxisYaw-prevAxisYaw) / (gs.limits.YawAxisRate * dt)
+		pitchAxisApplied := (gs.controls.AxisPitch - prevAxisPitch) / (gs.limits.PitchAxisRate * dt)
+		gs.controls.AmpAxis = mathx.Clamp(ampAxisApplied, -1, 1)
+		gs.controls.PhiAxis = mathx.Clamp(phiAxisApplied, -1, 1)
+		gs.controls.YawAxis = mathx.Clamp(yawAxisApplied, -1, 1)
+		gs.controls.PitchAxis = mathx.Clamp(pitchAxisApplied, -1, 1)
+	} else {
+		gs.controls.AmpAxis = ampAxis
+		gs.controls.PhiAxis = phiAxis
+		gs.controls.YawAxis = yawAxis
+		gs.controls.PitchAxis = pitchAxis
+	}
 
 	if !gs.couplerEnabled {
 		return
@@ -2291,53 +2128,135 @@ func (gs *gameSession) evaluateGravityLocked() gameGravityEval {
 		gravityModel: gs.gravityModel,
 	}
 
-	switch gs.gravityModel {
-	case "coupling":
-		if gs.couplerEnabled {
-			coupled := gs.couplerState.EffectiveGravityAccel(gRaw, gs.craft.Orientation)
-			// Authority gate: tie antigravity effect to usable resonator state so
-			// low-Q/low-beta/low-drive settings cannot produce full lift.
-			qTarget := math.Max(gs.controls.QTarget, 0)
-			betaTarget := math.Max(gs.controls.BetaTarget, 0)
-			ampTarget := math.Max(gs.controls.AmpTarget, 0)
-			lockQ := mathx.Clamp(gs.couplerState.LockQuality, 0, 1)
-			qFactor := 1 - math.Exp(-qTarget/120.0)
-			betaFactor := 1 - math.Exp(-betaTarget/1.2)
-			ampFactor := 1 - math.Exp(-ampTarget/2.5)
-			authority := mathx.Clamp(lockQ*qFactor*betaFactor*ampFactor, 0, 1)
-			eval.effective = gRaw.Scale(1 - authority).Add(coupled.Scale(authority))
-		}
-	case "yukawa":
-		var diag []physics.YukawaBodyDiagnostic
-		eval.effective, diag = physics.GravityAtYukawa(gs.craft.Position, gs.env.G, gs.bodies, gs.yukawaAlpha, gs.yukawaLambda)
-		eval.yukawaRepulsionPrimary, eval.yukawaKernelPrimary = findYukawaPrimary(gs.primaryBodyLocked().Name, diag)
-	case "negmass":
-		inertialSign := 1.0
-		if gs.negMassConvention == "C2" && gs.negMassQGCraft < 0 {
-			inertialSign = -1
-		}
-		eval.inertialMassSign = inertialSign
-		eval.negMassConvention = gs.negMassConvention
-		eval.qgCraft = gs.negMassQGCraft
-		eval.runawayAccelLimit = gs.negMassRunawayLimit
-		var diag []physics.SignedChargeBodyDiagnostic
-		eval.effective, diag = physics.GravityAtSignedCharge(
-			gs.craft.Position,
-			gs.env.G,
-			gs.bodies,
-			gs.negMassQGCraft,
-			inertialSign,
-			gs.negMassOverrides,
-		)
-		eval.qgPrimary = findSignedChargePrimary(gs.primaryBodyLocked().Name, diag)
-		eval.runawayAccelMag = eval.effective.Norm()
-		eval.runawayFlag = eval.runawayAccelMag >= gs.negMassRunawayLimit
-		eval.runawayExpectedUnderC2 = eval.runawayFlag && gs.negMassConvention == "C2"
-	default:
-		eval.effective = gRaw
+	if gs.couplerEnabled {
+		qgNow := gs.couplingStep.QGCraft
+		qgDynamic := gs.couplingStep.QGDynamicTerm
+		qgAuthority := gs.couplingStep.QGAuthority
+		eval.qgCraftBase = gs.negMassQGCraft
+		eval.qgCraftDynamicTerm = qgDynamic
+		eval.qgCraft = qgNow
+		eval.qgAuthority = qgAuthority
+		coupled := gs.couplerState.EffectiveGravityAccel(gRaw, gs.craft.Orientation)
+		authority := mathx.Clamp(qgAuthority, 0, 1)
+		eval.effective = gRaw.Scale(1-authority).Add(coupled.Scale(authority))
 	}
 
 	return eval
+}
+
+func (gs *gameSession) targetChargeStateLocked() (float64, float64) {
+	if gs == nil || gs.couplerState == nil {
+		return 0, 0
+	}
+	lockQ := mathx.Clamp(gs.couplerState.LockQuality, 0, 1)
+	powerW := math.Max(0, gs.couplerState.DrivePower)
+	powerFactor := 1 - math.Exp(-powerW/2.0e7)
+	qFactor := 1 - math.Exp(-math.Max(0, gs.controls.QTarget)/260.0)
+	betaFactor := 1 - math.Exp(-math.Max(0, gs.controls.BetaTarget)/1.8)
+	authority := mathx.Clamp(lockQ*powerFactor*qFactor*betaFactor, 0, 1)
+	phaseDrive := math.Sin(gs.controls.ThetaTarget)
+	// Dynamic term permits decouple (near zero) and negative-charge regimes as
+	// resonator authority rises; sign/direction is phase-driven.
+	dynamic := mathx.Clamp(2.0*authority*phaseDrive, -2.5, 2.5)
+	return dynamic, authority
+}
+
+func (gs *gameSession) updateChargeDynamicsLocked(dt float64) {
+	if gs == nil || dt <= 0 {
+		return
+	}
+	dynTarget, authTarget := gs.targetChargeStateLocked()
+	authTau := 0.30
+	dynTau := 0.45
+	authA := mathx.Clamp(dt/math.Max(authTau, 1e-6), 0, 1)
+	dynA := mathx.Clamp(dt/math.Max(dynTau, 1e-6), 0, 1)
+	gs.qgAuthorityState += (authTarget - gs.qgAuthorityState) * authA
+	gs.qgDynamicState += (dynTarget - gs.qgDynamicState) * dynA
+	gs.qgAuthorityState = mathx.Clamp(gs.qgAuthorityState, 0, 1)
+	gs.qgDynamicState = mathx.Clamp(gs.qgDynamicState, -2.5, 2.5)
+}
+
+func (gs *gameSession) updateCouplingStateLocked(dt float64) {
+	if gs == nil {
+		return
+	}
+	if dt > 0 {
+		gs.updateChargeDynamicsLocked(dt)
+	}
+	qgNow, dyn, authority := gs.dynamicChargeStateLocked()
+	inertialMass, inertialScale := gs.effectiveInertialStateLocked()
+	inertialSign := 1.0
+	if inertialScale < 0 {
+		inertialSign = -1.0
+	}
+	gs.couplingStep = gameCouplingState{
+		QGCraft:       qgNow,
+		QGBase:        gs.negMassQGCraft,
+		QGDynamicTerm: dyn,
+		QGAuthority:   authority,
+		InertialMass:  inertialMass,
+		InertialScale: inertialScale,
+		InertialSign:  inertialSign,
+		Regime:        gs.chargeRegimeLocked(),
+	}
+}
+
+func (gs *gameSession) dynamicChargeStateLocked() (float64, float64, float64) {
+	base := gs.negMassQGCraft
+	dynamic := gs.qgDynamicState
+	authority := gs.qgAuthorityState
+	return base + dynamic, dynamic, authority
+}
+
+func (gs *gameSession) effectiveInertialStateLocked() (float64, float64) {
+	if gs == nil {
+		return 0, 1.0
+	}
+	// Coupling mode: use persistent resonator authority+phase to allow
+	// gradual decoupling and sign inversion at high authority.
+	if gs.couplerEnabled && gs.couplerState != nil {
+		lockQ := mathx.Clamp(gs.couplerState.LockQuality, 0, 1)
+		authority := gs.qgAuthorityState
+		phaseDrive := math.Sin(gs.controls.ThetaTarget)
+		decouple := mathx.Clamp(authority*math.Abs(phaseDrive), 0, 1)
+		scale := mathx.Clamp(1.0-(0.985*decouple), 0.015, 1.5)
+		sign := 1.0
+		// Require strong lock + authority before allowing inertial inversion.
+		if lockQ > 0.85 && authority > 0.75 && phaseDrive < -0.88 {
+			sign = -1.0
+		}
+		effMass := gs.craft.Mass * scale * sign
+		if math.Abs(effMass) < 1e-9 {
+			effMass = gs.craft.Mass * 0.015
+		}
+		return effMass, scale * sign
+	}
+	return gs.craft.Mass, 1.0
+}
+
+func (gs *gameSession) chargeRegimeLocked() string {
+	if gs == nil {
+		return "coupled"
+	}
+	lockQ := 0.0
+	if gs.couplerState != nil {
+		lockQ = mathx.Clamp(gs.couplerState.LockQuality, 0, 1)
+	}
+	_, _, authority := gs.dynamicChargeStateLocked()
+	_, inertialScale := gs.effectiveInertialStateLocked()
+	if authority < 0.10 || lockQ < 0.40 {
+		return "spinup"
+	}
+	if inertialScale < -0.08 {
+		return "negative"
+	}
+	if math.Abs(inertialScale) <= 0.08 {
+		return "decoupled"
+	}
+	if math.Abs(inertialScale) <= 0.70 {
+		return "partial"
+	}
+	return "coupled"
 }
 
 func (gs *gameSession) primaryBodyLocked() physics.CelestialBody {
@@ -2365,8 +2284,71 @@ func (gs *gameSession) groundBodyLocked() physics.CelestialBody {
 	return gs.bodies[idx]
 }
 
+func (gs *gameSession) dominantBodyIndexLocked() int {
+	if gs == nil || len(gs.bodies) == 0 {
+		return 0
+	}
+	bestIdx := 0
+	bestA := -1.0
+	for i := range gs.bodies {
+		b := gs.bodies[i]
+		rv := gs.craft.Position.Sub(b.Position)
+		r2 := rv.Norm2()
+		if r2 <= 1e-9 || b.Mass <= 0 {
+			continue
+		}
+		a := gs.env.G * b.Mass / r2
+		if a > bestA {
+			bestA = a
+			bestIdx = i
+		}
+	}
+	if bestA < 0 {
+		return 0
+	}
+	return bestIdx
+}
+
+func (gs *gameSession) applyPrimaryEnvironmentFromBodyLocked() {
+	if gs == nil || len(gs.bodies) == 0 {
+		return
+	}
+	idx := gs.primaryIdx
+	if idx < 0 || idx >= len(gs.bodies) {
+		idx = 0
+	}
+	name := strings.ToLower(strings.TrimSpace(gs.bodies[idx].Name))
+	if preset, ok := gamePlanetPresets[name]; ok {
+		gs.env.Atmosphere.Enabled = preset.AtmosphereEnabled
+		gs.env.Atmosphere.Rho0 = preset.AtmosphereRho0
+		gs.env.Atmosphere.ScaleHeight = preset.AtmosphereScaleH
+		gs.env.Atmosphere.Temperature0 = preset.AtmosphereT0
+		gs.env.Atmosphere.LapseRate = preset.AtmosphereLapse
+		gs.env.Atmosphere.Gamma = preset.AtmosphereGamma
+		gs.env.Atmosphere.GasConstant = preset.AtmosphereR
+		gs.env.Atmosphere.Layers = defaultAtmosphereLayersForPreset(preset)
+		gs.env.BField = mathx.Vec3{Y: preset.MagFieldTeslaEq}
+	}
+	gs.env.Ground.BodyIndex = idx
+}
+
+func (gs *gameSession) updateDominantPrimaryLocked() {
+	if gs == nil || len(gs.bodies) == 0 {
+		return
+	}
+	idx := gs.dominantBodyIndexLocked()
+	if idx < 0 || idx >= len(gs.bodies) {
+		return
+	}
+	gs.primaryIdx = idx
+	gs.applyPrimaryEnvironmentFromBodyLocked()
+}
+
 func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 	primary := gs.primaryBodyLocked()
+	effInertialMass := gs.couplingStep.InertialMass
+	effInertialScale := gs.couplingStep.InertialScale
+	chargeRegime := gs.couplingStep.Regime
 	r := gs.craft.Position.Sub(primary.Position)
 	d := r.Norm()
 	up := mathx.Vec3{}
@@ -2505,12 +2487,18 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 
 		NegMassConvention:      eval.negMassConvention,
 		QGCraft:                eval.qgCraft,
+		QGCraftBase:            eval.qgCraftBase,
+		QGCraftDynamicTerm:     eval.qgCraftDynamicTerm,
+		QGAuthority:            eval.qgAuthority,
 		QGPrimary:              eval.qgPrimary,
 		InertialMassSign:       eval.inertialMassSign,
 		RunawayAccelMag:        eval.runawayAccelMag,
 		RunawayAccelLimit:      eval.runawayAccelLimit,
 		RunawayFlag:            eval.runawayFlag,
 		RunawayExpectedUnderC2: eval.runawayExpectedUnderC2,
+		EffectiveInertialMass:  effInertialMass,
+		EffectiveInertialScale: effInertialScale,
+		ChargeRegime:           chargeRegime,
 
 		ControlAmpTarget:      gs.controls.AmpTarget,
 		ControlThetaTarget:    gs.controls.ThetaTarget,
@@ -2519,6 +2507,7 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		ControlBetaTarget:     gs.controls.BetaTarget,
 		ControlPlasmaTarget:   gs.controls.PlasmaTarget,
 		ControlThrottleTarget: gs.controls.ThrottleTarget,
+		ControlThrottleApplied: gs.craft.Propulsion.Throttle,
 		ControlEMChargeTarget: gs.controls.EMChargeTarget,
 		ControlEFieldTarget:   gs.controls.EFieldTarget,
 		ControlBFieldTarget:   gs.controls.BFieldTarget,
