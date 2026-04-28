@@ -375,33 +375,33 @@ type gameStepState struct {
 	EffectiveInertialScale float64 `json:"effective_inertial_scale"`
 	ChargeRegime           string  `json:"charge_regime"`
 
-	ControlAmpTarget      float64 `json:"control_amp_target"`
-	ControlThetaTarget    float64 `json:"control_theta_target"`
-	ControlOmegaTarget    float64 `json:"control_omega_target"`
-	ControlQTarget        float64 `json:"control_q_target"`
-	ControlBetaTarget     float64 `json:"control_beta_target"`
-	ControlPlasmaTarget   float64 `json:"control_plasma_target"`
-	ControlThrottleTarget float64 `json:"control_throttle_target"`
+	ControlAmpTarget       float64 `json:"control_amp_target"`
+	ControlThetaTarget     float64 `json:"control_theta_target"`
+	ControlOmegaTarget     float64 `json:"control_omega_target"`
+	ControlQTarget         float64 `json:"control_q_target"`
+	ControlBetaTarget      float64 `json:"control_beta_target"`
+	ControlPlasmaTarget    float64 `json:"control_plasma_target"`
+	ControlThrottleTarget  float64 `json:"control_throttle_target"`
 	ControlThrottleApplied float64 `json:"control_throttle_applied"`
-	ControlEMChargeTarget float64 `json:"control_em_charge_target"`
-	ControlEFieldTarget   float64 `json:"control_e_field_target"`
-	ControlBFieldTarget   float64 `json:"control_b_field_target"`
-	ControlAxisYaw        float64 `json:"control_axis_yaw"`
-	ControlAxisPitch      float64 `json:"control_axis_pitch"`
-	ControlWarpX          float64 `json:"control_warp_x"`
-	ControlWarpY          float64 `json:"control_warp_y"`
-	ControlWarpZ          float64 `json:"control_warp_z"`
-	ControlLockAssist     bool    `json:"control_lock_assist"`
-	ControlAmpAxis        float64 `json:"control_amp_axis"`
-	ControlPhiAxis        float64 `json:"control_phi_axis"`
-	ControlYawAxis        float64 `json:"control_yaw_axis"`
-	ControlPitchAxis      float64 `json:"control_pitch_axis"`
-	AssistPhase           string  `json:"assist_phase"`
-	NavDistance           float64 `json:"nav_distance"`
-	NavVAlong             float64 `json:"nav_v_along"`
-	CoastCapture          bool    `json:"coast_capture"`
-	NavTopReached         bool    `json:"nav_top_reached"`
-	NavProfileReached     bool    `json:"nav_profile_reached"`
+	ControlEMChargeTarget  float64 `json:"control_em_charge_target"`
+	ControlEFieldTarget    float64 `json:"control_e_field_target"`
+	ControlBFieldTarget    float64 `json:"control_b_field_target"`
+	ControlAxisYaw         float64 `json:"control_axis_yaw"`
+	ControlAxisPitch       float64 `json:"control_axis_pitch"`
+	ControlWarpX           float64 `json:"control_warp_x"`
+	ControlWarpY           float64 `json:"control_warp_y"`
+	ControlWarpZ           float64 `json:"control_warp_z"`
+	ControlLockAssist      bool    `json:"control_lock_assist"`
+	ControlAmpAxis         float64 `json:"control_amp_axis"`
+	ControlPhiAxis         float64 `json:"control_phi_axis"`
+	ControlYawAxis         float64 `json:"control_yaw_axis"`
+	ControlPitchAxis       float64 `json:"control_pitch_axis"`
+	AssistPhase            string  `json:"assist_phase"`
+	NavDistance            float64 `json:"nav_distance"`
+	NavVAlong              float64 `json:"nav_v_along"`
+	CoastCapture           bool    `json:"coast_capture"`
+	NavTopReached          bool    `json:"nav_top_reached"`
+	NavProfileReached      bool    `json:"nav_profile_reached"`
 }
 
 type gameControlState struct {
@@ -473,14 +473,14 @@ type gameGravityEval struct {
 }
 
 type gameCouplingState struct {
-	QGCraft        float64
-	QGBase         float64
-	QGDynamicTerm  float64
-	QGAuthority    float64
-	InertialMass   float64
-	InertialScale  float64
-	InertialSign   float64
-	Regime         string
+	QGCraft       float64
+	QGBase        float64
+	QGDynamicTerm float64
+	QGAuthority   float64
+	InertialMass  float64
+	InertialScale float64
+	InertialSign  float64
+	Regime        string
 }
 
 type gameSession struct {
@@ -1602,6 +1602,10 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 		primary := gs.primaryBodyLocked()
 		forceEval := physics.EvaluateForces(gs.craft, gs.env, primary, lastEval.effective)
 		forceEval = gs.enforceEnergyBudgetLocked(forceEval, gs.dt, primary, lastEval.effective)
+		// Energy curtailment can reduce coupler authority, so recompute gravity and
+		// forces before integration instead of flying on stale pre-curtailment data.
+		lastEval = gs.evaluateGravityLocked()
+		forceEval = physics.EvaluateForces(gs.craft, gs.env, primary, lastEval.effective)
 		gs.integrateLimitHistoryLocked(forceEval, gs.dt)
 		effMass := gs.couplingStep.InertialMass
 		netForce := forceEval.Net
@@ -1717,15 +1721,20 @@ func (gs *gameSession) enforceEnergyBudgetLocked(forceEval physics.ForceBreakdow
 	availableJ := math.Max(0, gs.couplerState.Energy)
 	reqPlasma := math.Max(0, forceEval.DragEval.PlasmaPower)
 	vRel := gs.craft.Velocity.Sub(primary.Velocity)
-	reqThrust := math.Max(0, forceEval.Thrust.Dot(vRel))
-	reqEM := math.Max(0, forceEval.EM.Dot(vRel))
+	reqThrust := gameStaticActuatorPower(forceEval.Thrust, vRel)
+	reqEM := gameStaticActuatorPower(forceEval.EM, vRel)
+	reqCoupler := math.Max(0, gs.couplerState.DrivePower)
+	if gs.couplerState.Params.PowerLimit > 0 && reqCoupler > gs.couplerState.Params.PowerLimit {
+		reqCoupler = gs.couplerState.Params.PowerLimit
+	}
 	req := energy.Request{
-		CouplerW: math.Max(0, gs.couplerState.DrivePower),
+		CouplerW: reqCoupler,
 		PlasmaW:  reqPlasma,
 		ThrustW:  reqThrust,
 		EMW:      reqEM,
 	}
 	grant := energy.Allocate(availableJ, dt, req)
+
 	scale := 1.0
 	totalReq := reqPlasma + reqThrust + reqEM
 	if totalReq > 1e-9 {
@@ -1737,19 +1746,11 @@ func (gs *gameSession) enforceEnergyBudgetLocked(forceEval physics.ForceBreakdow
 		gs.craft.EM.ChargeC *= scale
 		forceEval = physics.EvaluateForces(gs.craft, gs.env, primary, gravityAccel)
 		reqPlasma = math.Max(0, forceEval.DragEval.PlasmaPower)
-		reqThrust = math.Max(0, forceEval.Thrust.Dot(vRel))
-		reqEM = math.Max(0, forceEval.EM.Dot(vRel))
+		reqThrust = gameStaticActuatorPower(forceEval.Thrust, vRel)
+		reqEM = gameStaticActuatorPower(forceEval.EM, vRel)
 	}
-	couplerScale := 1.0
-	if req.CouplerW > 1e-9 {
-		couplerScale = grant.CouplerW / req.CouplerW
-	}
-	if couplerScale < 1.0 {
-		gs.couplerState.ADrive *= couplerScale
-		gs.couplerState.DrivePower = grant.CouplerW
-		gs.couplerState.LockQuality = math.Max(0, gs.couplerState.LockQuality-(1-couplerScale)*0.08)
-		gs.couplerState.C = gs.couplerState.Params.DefaultC + gs.couplerState.LockQuality*(gs.couplerState.C-gs.couplerState.Params.DefaultC)
-	}
+
+	gs.couplerState.ApplyPowerGrant(grant.CouplerW, dt)
 	gs.couplerState.Energy -= grant.UsedJ
 	if gs.couplerState.Energy < 0 {
 		gs.couplerState.Energy = 0
@@ -1766,6 +1767,19 @@ func (gs *gameSession) enforceEnergyBudgetLocked(forceEval physics.ForceBreakdow
 		CurtailFrac:   grant.CurtailFrac,
 	}
 	return forceEval
+}
+
+func gameStaticActuatorPower(force mathx.Vec3, vRel mathx.Vec3) float64 {
+	mag := force.Norm()
+	if mag <= 1e-12 || math.IsNaN(mag) || math.IsInf(mag, 0) {
+		return 0
+	}
+	dir := force.Normalize()
+	throughputSpeed := math.Abs(vRel.Dot(dir))
+	if throughputSpeed < 1 {
+		throughputSpeed = 1
+	}
+	return mag * throughputSpeed
 }
 
 func (gs *gameSession) updateDerivedActuationLocked(eval gameGravityEval) {
@@ -2138,7 +2152,7 @@ func (gs *gameSession) evaluateGravityLocked() gameGravityEval {
 		eval.qgAuthority = qgAuthority
 		coupled := gs.couplerState.EffectiveGravityAccel(gRaw, gs.craft.Orientation)
 		authority := mathx.Clamp(qgAuthority, 0, 1)
-		eval.effective = gRaw.Scale(1-authority).Add(coupled.Scale(authority))
+		eval.effective = gRaw.Scale(1 - authority).Add(coupled.Scale(authority))
 	}
 
 	return eval
@@ -2500,33 +2514,33 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		EffectiveInertialScale: effInertialScale,
 		ChargeRegime:           chargeRegime,
 
-		ControlAmpTarget:      gs.controls.AmpTarget,
-		ControlThetaTarget:    gs.controls.ThetaTarget,
-		ControlOmegaTarget:    gs.controls.OmegaTarget,
-		ControlQTarget:        gs.controls.QTarget,
-		ControlBetaTarget:     gs.controls.BetaTarget,
-		ControlPlasmaTarget:   gs.controls.PlasmaTarget,
-		ControlThrottleTarget: gs.controls.ThrottleTarget,
+		ControlAmpTarget:       gs.controls.AmpTarget,
+		ControlThetaTarget:     gs.controls.ThetaTarget,
+		ControlOmegaTarget:     gs.controls.OmegaTarget,
+		ControlQTarget:         gs.controls.QTarget,
+		ControlBetaTarget:      gs.controls.BetaTarget,
+		ControlPlasmaTarget:    gs.controls.PlasmaTarget,
+		ControlThrottleTarget:  gs.controls.ThrottleTarget,
 		ControlThrottleApplied: gs.craft.Propulsion.Throttle,
-		ControlEMChargeTarget: gs.controls.EMChargeTarget,
-		ControlEFieldTarget:   gs.controls.EFieldTarget,
-		ControlBFieldTarget:   gs.controls.BFieldTarget,
-		ControlAxisYaw:        gs.controls.AxisYaw,
-		ControlAxisPitch:      gs.controls.AxisPitch,
-		ControlWarpX:          warpAxis.X,
-		ControlWarpY:          warpAxis.Y,
-		ControlWarpZ:          warpAxis.Z,
-		ControlLockAssist:     gs.controls.LockAssist,
-		ControlAmpAxis:        gs.controls.AmpAxis,
-		ControlPhiAxis:        gs.controls.PhiAxis,
-		ControlYawAxis:        gs.controls.YawAxis,
-		ControlPitchAxis:      gs.controls.PitchAxis,
-		AssistPhase:           gs.assistPhase,
-		NavDistance:           gs.navDistance,
-		NavVAlong:             gs.navVAlong,
-		CoastCapture:          gs.coastCapture,
-		NavTopReached:         gs.navTopReached,
-		NavProfileReached:     gs.navProfileReached,
+		ControlEMChargeTarget:  gs.controls.EMChargeTarget,
+		ControlEFieldTarget:    gs.controls.EFieldTarget,
+		ControlBFieldTarget:    gs.controls.BFieldTarget,
+		ControlAxisYaw:         gs.controls.AxisYaw,
+		ControlAxisPitch:       gs.controls.AxisPitch,
+		ControlWarpX:           warpAxis.X,
+		ControlWarpY:           warpAxis.Y,
+		ControlWarpZ:           warpAxis.Z,
+		ControlLockAssist:      gs.controls.LockAssist,
+		ControlAmpAxis:         gs.controls.AmpAxis,
+		ControlPhiAxis:         gs.controls.PhiAxis,
+		ControlYawAxis:         gs.controls.YawAxis,
+		ControlPitchAxis:       gs.controls.PitchAxis,
+		AssistPhase:            gs.assistPhase,
+		NavDistance:            gs.navDistance,
+		NavVAlong:              gs.navVAlong,
+		CoastCapture:           gs.coastCapture,
+		NavTopReached:          gs.navTopReached,
+		NavProfileReached:      gs.navProfileReached,
 	}
 }
 

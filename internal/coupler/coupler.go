@@ -132,7 +132,7 @@ func New(params Params) *State {
 		OmegaDrive:  params.InitialOmegaBase,
 		ThetaDrive:  mathx.WrapPositive(params.InitialDrivePhase),
 		Z:           complex(params.InitialResonatorX, params.InitialResonatorY),
-		LockQuality: 1.0,
+		LockQuality: 0.0,
 		C:           params.DefaultC,
 		Energy:      params.EnergyInitial,
 	}
@@ -204,14 +204,59 @@ func (s *State) Update(dt float64) {
 	s.updateLockQuality(dt)
 	s.recomputeDerived()
 
-	s.DrivePower = s.Params.PowerC1*s.ADrive*s.ADrive + s.Params.PowerC2*cmplx.Abs(s.Z)*cmplx.Abs(s.Z)
-	if math.IsNaN(s.DrivePower) || math.IsInf(s.DrivePower, 0) || s.DrivePower < 0 {
-		s.DrivePower = 0
-	}
-	if s.Params.PowerLimit > 0 && s.DrivePower > s.Params.PowerLimit {
-		s.DrivePower = s.Params.PowerLimit
-	}
+	s.DrivePower = s.requiredPower()
 	// Energy debiting/curtailment is handled by the shared energy manager.
+}
+
+// ApplyPowerGrant constrains the already-integrated resonator state to the
+// power actually granted by the shared energy manager. This keeps coupling
+// authority tied to funded oscillator energy instead of allowing telemetry-only
+// power caps.
+func (s *State) ApplyPowerGrant(grantedW, dt float64) {
+	required := s.requiredPower()
+	if required <= 1e-12 {
+		s.DrivePower = 0
+		return
+	}
+	if grantedW < 0 || math.IsNaN(grantedW) || math.IsInf(grantedW, 0) {
+		grantedW = 0
+	}
+	if s.Params.PowerLimit > 0 && grantedW > s.Params.PowerLimit {
+		grantedW = s.Params.PowerLimit
+	}
+	scale := mathx.Clamp(grantedW/required, 0, 1)
+	if scale >= 0.999999 {
+		s.DrivePower = required
+		return
+	}
+
+	// Power shortfall means the drive cannot maintain the stored resonant mode.
+	// Scale both the active drive and stored oscillator amplitude by sqrt(power),
+	// then degrade lock quality proportionally. The next force evaluation uses
+	// this curtailed state.
+	ampScale := math.Sqrt(scale)
+	s.ADrive *= ampScale
+	s.Z *= complex(ampScale, 0)
+	missing := 1 - scale
+	decay := s.Params.LockCollapse
+	if decay <= 0 {
+		decay = 1
+	}
+	if dt > 0 {
+		s.LockQuality = math.Max(0, s.LockQuality-missing*decay*dt)
+	} else {
+		s.LockQuality *= ampScale
+	}
+	s.recomputeDerived()
+	s.DrivePower = grantedW
+}
+
+func (s *State) requiredPower() float64 {
+	p := s.Params.PowerC1*s.ADrive*s.ADrive + s.Params.PowerC2*cmplx.Abs(s.Z)*cmplx.Abs(s.Z)
+	if math.IsNaN(p) || math.IsInf(p, 0) || p < 0 {
+		return 0
+	}
+	return p
 }
 
 func (s *State) EffectiveGravityAccel(g mathx.Vec3, orientation mathx.Quat) mathx.Vec3 {
@@ -250,7 +295,25 @@ func (s *State) recomputeDerived() {
 	s.K = mathx.Clamp(s.Params.Alpha*mag, 0, s.Params.KMax)
 	s.Phi = mathx.WrapAngle(cmplx.Phase(s.Z) - s.ThetaDrive + s.Params.PhiBias + s.ThetaTarget)
 	cActive := ActiveCoupling(s.K, s.Phi)
-	s.C = s.Params.DefaultC + s.LockQuality*(cActive-s.Params.DefaultC)
+	authority := s.Authority()
+	s.C = s.Params.DefaultC + authority*(cActive-s.Params.DefaultC)
+}
+
+// Authority reports how much of the active coupling mode is physically
+// available. Frequency lock alone is not enough: the resonator must also have
+// enough amplitude to provide coupling authority. With no stored oscillator
+// energy, the craft falls back to DefaultC.
+func (s *State) Authority() float64 {
+	if s == nil {
+		return 0
+	}
+	kMax := s.Params.KMax
+	if kMax <= 0 {
+		kMax = 1
+	}
+	kThreshold := math.Max(1e-9, 0.02*kMax)
+	ampAuthority := mathx.Clamp(s.K/kThreshold, 0, 1)
+	return mathx.Clamp(s.LockQuality, 0, 1) * ampAuthority
 }
 
 func ActiveCoupling(k, phi float64) float64 {

@@ -400,7 +400,7 @@ func liftForce(c Craft, drag DragEval, vRel mathx.Vec3, speed float64) (mathx.Ve
 	if forward.Norm2() == 0 || right.Norm2() == 0 || bodyUp.Norm2() == 0 {
 		return mathx.Vec3{}, 0, 0
 	}
-	aoa := math.Atan2(flow.Dot(bodyUp), flow.Dot(forward))
+	aoa := math.Atan2(flow.Dot(bodyUp), -flow.Dot(forward))
 	clAlpha := c.Aero.ClAlpha
 	if clAlpha == 0 {
 		clAlpha = 5.4

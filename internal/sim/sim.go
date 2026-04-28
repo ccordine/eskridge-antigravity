@@ -150,23 +150,13 @@ func Run(cfg config.Scenario, sink func(Sample) error) (Result, error) {
 		forceEval := physics.EvaluateForces(craft, env, primary, aG)
 		if couplerEnabled {
 			availableJ := math.Max(0, couplerState.Energy)
-			vRel := craft.Velocity.Sub(primary.Velocity)
-			req := energy.Request{
-				CouplerW: math.Max(0, couplerState.DrivePower),
-				PlasmaW:  math.Max(0, forceEval.DragEval.PlasmaPower),
-				ThrustW:  math.Max(0, forceEval.Thrust.Dot(vRel)),
-				EMW:      math.Max(0, forceEval.EM.Dot(vRel)),
-			}
+			req := forcePowerRequest(craft, primary, forceEval, couplerState)
 			grant := energy.Allocate(availableJ, cfg.Dt, req)
-			if req.CouplerW > 1e-9 {
-				cScale := grant.CouplerW / req.CouplerW
-				if cScale < 1 {
-					couplerState.ADrive *= cScale
-					couplerState.DrivePower = grant.CouplerW
-					couplerState.LockQuality = math.Max(0, couplerState.LockQuality-(1-cScale)*0.08)
-					couplerState.C = couplerState.Params.DefaultC + couplerState.LockQuality*(couplerState.C-couplerState.Params.DefaultC)
-				}
-			}
+
+			// The coupler only gets the authority it can pay for this tick. Apply any
+			// curtailment before recomputing effective gravity and integrating.
+			couplerState.ApplyPowerGrant(grant.CouplerW, cfg.Dt)
+
 			totalReq := req.PlasmaW + req.ThrustW + req.EMW
 			scale := 1.0
 			if totalReq > 1e-9 {
@@ -176,8 +166,15 @@ func Run(cfg config.Scenario, sink func(Sample) error) (Result, error) {
 				craft.Drag.Plasma.Level = mathx.Clamp(craft.Drag.Plasma.Level*scale, 0, 1)
 				craft.Propulsion.Throttle = mathx.Clamp(craft.Propulsion.Throttle*scale, -1, 1)
 				craft.EM.ChargeC *= scale
-				forceEval = physics.EvaluateForces(craft, env, primary, aG)
 			}
+
+			// Recompute force path after all curtailment. This prevents a stale
+			// pre-curtailment coupling value from producing free acceleration.
+			if gravityModel == "coupling" {
+				aG = couplerState.EffectiveGravityAccel(gRaw, craft.Orientation)
+			}
+			forceEval = physics.EvaluateForces(craft, env, primary, aG)
+
 			couplerState.Energy -= grant.UsedJ
 			if couplerState.Energy < 0 {
 				couplerState.Energy = 0
@@ -257,6 +254,38 @@ func Run(cfg config.Scenario, sink func(Sample) error) (Result, error) {
 		FinalCoupler: *couplerState,
 		Steps:        steps,
 	}, nil
+}
+
+func forcePowerRequest(craft physics.Craft, primary physics.CelestialBody, forceEval physics.ForceBreakdown, couplerState *coupler.State) energy.Request {
+	vRel := craft.Velocity.Sub(primary.Velocity)
+	couplerW := 0.0
+	if couplerState != nil {
+		couplerW = math.Max(0, couplerState.DrivePower)
+		if couplerState.Params.PowerLimit > 0 && couplerW > couplerState.Params.PowerLimit {
+			couplerW = couplerState.Params.PowerLimit
+		}
+	}
+	return energy.Request{
+		CouplerW: couplerW,
+		PlasmaW:  math.Max(0, forceEval.DragEval.PlasmaPower),
+		ThrustW:  staticActuatorPower(forceEval.Thrust, vRel),
+		EMW:      staticActuatorPower(forceEval.EM, vRel),
+	}
+}
+
+func staticActuatorPower(force mathx.Vec3, vRel mathx.Vec3) float64 {
+	mag := force.Norm()
+	if mag <= 1e-12 || math.IsNaN(mag) || math.IsInf(mag, 0) {
+		return 0
+	}
+	dir := force.Normalize()
+	throughputSpeed := math.Abs(vRel.Dot(dir))
+	// Static force still needs a supportable actuator budget. This floor keeps
+	// hovering thrust/fields from becoming free at zero craft velocity.
+	if throughputSpeed < 1 {
+		throughputSpeed = 1
+	}
+	return mag * throughputSpeed
 }
 
 func resolveGravityModelType(cfg config.Scenario) string {
