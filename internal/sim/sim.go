@@ -8,6 +8,7 @@ import (
 	"github.com/example/acs/internal/config"
 	"github.com/example/acs/internal/control"
 	"github.com/example/acs/internal/coupler"
+	"github.com/example/acs/internal/energy"
 	"github.com/example/acs/internal/mathx"
 	"github.com/example/acs/internal/physics"
 )
@@ -147,6 +148,41 @@ func Run(cfg config.Scenario, sink func(Sample) error) (Result, error) {
 		}
 
 		forceEval := physics.EvaluateForces(craft, env, primary, aG)
+		if couplerEnabled {
+			availableJ := math.Max(0, couplerState.Energy)
+			vRel := craft.Velocity.Sub(primary.Velocity)
+			req := energy.Request{
+				CouplerW: math.Max(0, couplerState.DrivePower),
+				PlasmaW:  math.Max(0, forceEval.DragEval.PlasmaPower),
+				ThrustW:  math.Max(0, forceEval.Thrust.Dot(vRel)),
+				EMW:      math.Max(0, forceEval.EM.Dot(vRel)),
+			}
+			grant := energy.Allocate(availableJ, cfg.Dt, req)
+			if req.CouplerW > 1e-9 {
+				cScale := grant.CouplerW / req.CouplerW
+				if cScale < 1 {
+					couplerState.ADrive *= cScale
+					couplerState.DrivePower = grant.CouplerW
+					couplerState.LockQuality = math.Max(0, couplerState.LockQuality-(1-cScale)*0.08)
+					couplerState.C = couplerState.Params.DefaultC + couplerState.LockQuality*(couplerState.C-couplerState.Params.DefaultC)
+				}
+			}
+			totalReq := req.PlasmaW + req.ThrustW + req.EMW
+			scale := 1.0
+			if totalReq > 1e-9 {
+				scale = (grant.PlasmaW + grant.ThrustW + grant.EMW) / totalReq
+			}
+			if scale < 0.999999 {
+				craft.Drag.Plasma.Level = mathx.Clamp(craft.Drag.Plasma.Level*scale, 0, 1)
+				craft.Propulsion.Throttle = mathx.Clamp(craft.Propulsion.Throttle*scale, -1, 1)
+				craft.EM.ChargeC *= scale
+				forceEval = physics.EvaluateForces(craft, env, primary, aG)
+			}
+			couplerState.Energy -= grant.UsedJ
+			if couplerState.Energy < 0 {
+				couplerState.Energy = 0
+			}
+		}
 		craft.IntegrateSemiImplicit(cfg.Dt, forceEval.Net, mathx.Vec3{})
 
 		if env.Ground.Enabled {

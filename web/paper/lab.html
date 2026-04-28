@@ -61,6 +61,8 @@
           <span class="lab-label">Planet</span>
           <select data-planet-preset class="lab-select">
             <option value="earth">earth (1.00 g)</option>
+            <option value="earth_moon">earth + moon system</option>
+            <option value="solar_system">solar system sandbox (sun + planets + moon)</option>
             <option value="mercury">mercury (0.38 g)</option>
             <option value="moon">moon (0.165 g)</option>
             <option value="mars">mars (0.38 g)</option>
@@ -74,8 +76,9 @@
         <label class="lab-field">
           <span class="lab-label">Camera</span>
           <select data-planetary-camera class="lab-select">
+            <option value="follow_lock">follow craft (roll lock)</option>
+            <option value="follow_local">follow craft (local up)</option>
             <option value="global">global</option>
-            <option value="follow">follow craft</option>
           </select>
         </label>
 
@@ -151,10 +154,13 @@
 
               <section class="lab-overlay-card">
                 <div class="lab-overlay-head">
-                  <p class="chart-title">Speedo</p>
-                  <p class="lab-overlay-sub">live</p>
+                  <p class="chart-title">Speed</p>
+                  <p class="lab-overlay-sub">digital</p>
                 </div>
-                <canvas data-game-speedometer class="flight-canvas flight-canvas-overlay"></canvas>
+                <div class="lab-overlay-digital">
+                  <p data-stat="view_speed_overlay_main" class="lab-overlay-digital-main">-</p>
+                  <p data-stat="view_speed_overlay_sub" class="lab-overlay-digital-sub">-</p>
+                </div>
               </section>
             </div>
           </section>
@@ -276,6 +282,11 @@
               <div class="lab-instrument-tile"><p>Drive</p><strong data-stat="res_power_mini">-</strong></div>
             </div>
 
+            <label class="lab-toggle-card lab-toggle-card-span">
+              <input data-auto-resonator type="checkbox" checked class="lab-checkbox" />
+              <span>Auto Resonator (maintain lock / Q)</span>
+            </label>
+
             <div class="lab-preset-row lab-resonator-presets">
               <button data-resonator-preset="recover" class="lab-btn lab-btn-soft" type="button">Recover Lock</button>
               <button data-resonator-preset="build" class="lab-btn lab-btn-soft" type="button">Build Q</button>
@@ -291,7 +302,7 @@
                   </div>
                 </div>
                 <p data-control-readout="omega" class="lab-control-readout">80.00</p>
-                <input data-osc-omega-target type="range" min="0.1" max="1000000" step="0.1" value="80.0" class="lab-slider" />
+                <input data-resonator-field="omega" data-osc-omega-target type="range" min="10" max="400" step="0.5" value="80.0" class="lab-slider" />
               </section>
 
               <section class="lab-control-card">
@@ -302,7 +313,7 @@
                   </div>
                 </div>
                 <p data-control-readout="q" class="lab-control-readout">45.0</p>
-                <input data-osc-q-target type="range" min="0.01" max="1000000" step="0.01" value="45" class="lab-slider" />
+                <input data-resonator-field="q" data-osc-q-target type="range" min="1" max="3000" step="1" value="45" class="lab-slider" />
               </section>
 
               <section class="lab-control-card">
@@ -313,7 +324,7 @@
                   </div>
                 </div>
                 <p data-control-readout="beta" class="lab-control-readout">1.200</p>
-                <input data-osc-beta-target type="range" min="0.0" max="1000000" step="0.01" value="1.2" class="lab-slider" />
+                <input data-resonator-field="beta" data-osc-beta-target type="range" min="0.0" max="30" step="0.05" value="1.2" class="lab-slider" />
               </section>
 
               <section class="lab-control-card">
@@ -395,12 +406,38 @@
                 <input data-auto-vertical type="number" min="-100000" max="100000" step="0.5" value="0.0" class="lab-input" />
               </label>
 
+              <label class="lab-field">
+                <span class="lab-label">Target Altitude (m)</span>
+                <input data-auto-altitude type="number" min="0" max="100000000" step="1" value="0.0" class="lab-input" />
+              </label>
+
+              <label class="lab-field">
+                <span class="lab-label">Speed Cap Factor</span>
+                <input data-assist-speed-cap type="number" min="0.05" max="2.00" step="0.01" value="0.24" class="lab-input" />
+              </label>
+
+              <label class="lab-field">
+                <span class="lab-label">Brake Aggression</span>
+                <input data-assist-brake-gain type="number" min="0.10" max="3.00" step="0.05" value="1.00" class="lab-input" />
+              </label>
+
+              <label class="lab-field">
+                <span class="lab-label">Nav Max Speed (m/s)</span>
+                <input data-nav-max-speed type="number" min="20" max="8000" step="10" value="320" class="lab-input" />
+              </label>
+
+              <label class="lab-field">
+                <span class="lab-label">Nav Stop Radius (m)</span>
+                <input data-nav-stop-radius type="number" min="5" max="5000" step="5" value="120" class="lab-input" />
+              </label>
+
               <div class="lab-preset-row lab-preset-row-wide">
                 <button data-assist-preset="hover" class="lab-btn lab-btn-soft" type="button">Hover</button>
                 <button data-assist-preset="neutral" class="lab-btn lab-btn-soft" type="button">Normal g</button>
                 <button data-assist-preset="ascend" class="lab-btn lab-btn-soft" type="button">Ascend</button>
                 <button data-assist-preset="descend" class="lab-btn lab-btn-soft" type="button">Descend</button>
               </div>
+
             </div>
           </section>
         </aside>
@@ -467,10 +504,53 @@
       </div>
     </section>
 
+    <section class="lab-band lab-graphs-band">
+      <div class="lab-band-head">
+        <div>
+          <p class="lab-block-step">4. Graphs</p>
+          <h3>Telemetry Graphs</h3>
+        </div>
+        <label class="lab-toggle-card">
+          <input data-telemetry-normalize type="checkbox" class="lab-checkbox" />
+          <span>Normalize Series (0..1)</span>
+        </label>
+      </div>
+      <div class="lab-graphs-grid">
+        <section class="lab-subpanel">
+          <div class="lab-subpanel-head"><p class="lab-section-title">Gravity and g-Load</p></div>
+          <canvas data-telemetry-chart="gravity" class="lab-telemetry-canvas"></canvas>
+        </section>
+        <section class="lab-subpanel">
+          <div class="lab-subpanel-head"><p class="lab-section-title">Motion and Vertical</p></div>
+          <canvas data-telemetry-chart="motion" class="lab-telemetry-canvas"></canvas>
+        </section>
+        <section class="lab-subpanel">
+          <div class="lab-subpanel-head"><p class="lab-section-title">Power Budget</p></div>
+          <canvas data-telemetry-chart="power" class="lab-telemetry-canvas"></canvas>
+        </section>
+        <section class="lab-subpanel">
+          <div class="lab-subpanel-head"><p class="lab-section-title">Atmosphere and Drag</p></div>
+          <canvas data-telemetry-chart="aero" class="lab-telemetry-canvas"></canvas>
+        </section>
+        <section class="lab-subpanel">
+          <div class="lab-subpanel-head"><p class="lab-section-title">Resonator Lock</p></div>
+          <canvas data-telemetry-chart="lock" class="lab-telemetry-canvas"></canvas>
+        </section>
+        <section class="lab-subpanel">
+          <div class="lab-subpanel-head"><p class="lab-section-title">Control / Warp Axis</p></div>
+          <canvas data-telemetry-chart="control" class="lab-telemetry-canvas"></canvas>
+        </section>
+        <section class="lab-subpanel">
+          <div class="lab-subpanel-head"><p class="lab-section-title">Warp / Gravity Shape</p></div>
+          <canvas data-telemetry-chart="fieldshape" class="lab-telemetry-canvas"></canvas>
+        </section>
+      </div>
+    </section>
+
     <section class="lab-band lab-data-band">
       <div class="lab-band-head">
         <div>
-          <p class="lab-block-step">4. Data</p>
+          <p class="lab-block-step">5. Data</p>
           <h3>Telemetry and Export</h3>
         </div>
         <div class="lab-export-row">

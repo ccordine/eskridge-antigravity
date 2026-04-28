@@ -21,3 +21,4 @@ This note defines which metrics are mandatory for every run artifact.
 
 - Claims alignment: [[foundations/coupling-claims]]
 - Falsification requirements: [[experiments/falsification-plan]]
+- Model contract: [[simulation/model-contract-v1]]

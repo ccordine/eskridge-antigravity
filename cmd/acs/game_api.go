@@ -17,6 +17,7 @@ import (
 
 	"github.com/example/acs/internal/config"
 	"github.com/example/acs/internal/coupler"
+	"github.com/example/acs/internal/energy"
 	"github.com/example/acs/internal/mathx"
 	"github.com/example/acs/internal/physics"
 )
@@ -33,12 +34,12 @@ const (
 	gameWarpKMax           = 1000.0
 	gameWarpAmpRateMin     = 9.0
 	gameWarpThetaRateMin   = 10.0
-	gameOscOmegaMin        = 0.1
-	gameOscOmegaMax        = 1000000.0
-	gameOscQMin            = 0.01
-	gameOscQMax            = 1000000.0
+	gameOscOmegaMin        = 10.0
+	gameOscOmegaMax        = 400.0
+	gameOscQMin            = 1.0
+	gameOscQMax            = 3000.0
 	gameOscBetaMin         = 0.0
-	gameOscBetaMax         = 1000000.0
+	gameOscBetaMax         = 30.0
 	gamePlasmaMin          = 0.0
 	gamePlasmaMax          = 1.0
 	gameYawAxisRate        = 3.6
@@ -47,6 +48,9 @@ const (
 	gameInitialAxisPitch   = 0.0
 	gameAttitudeAlignRate  = 3.2
 	gameInfiniteEnergyJ    = 1e18
+	gameBigG               = 6.67430e-11
+	earthMoonDistanceM     = 384_400_000.0
+	auMeters               = 149_597_870_700.0
 )
 
 type gamePlanetPreset struct {
@@ -170,19 +174,38 @@ type gameStartRequest struct {
 }
 
 type gameControlInput struct {
-	AmpAxis        float64 `json:"amp_axis"`
-	PhiAxis        float64 `json:"phi_axis"`
-	YawAxis        float64 `json:"yaw_axis"`
-	PitchAxis      float64 `json:"pitch_axis"`
-	OmegaTarget    float64 `json:"omega_target,omitempty"`
-	QTarget        float64 `json:"q_target,omitempty"`
-	BetaTarget     float64 `json:"beta_target,omitempty"`
-	PlasmaTarget   float64 `json:"plasma_target,omitempty"`
-	ThrottleTarget float64 `json:"throttle_target,omitempty"`
-	EMChargeTarget float64 `json:"em_charge_target,omitempty"`
-	EFieldTarget   float64 `json:"e_field_target,omitempty"`
-	BFieldTarget   float64 `json:"b_field_target,omitempty"`
-	LockAssist     *bool   `json:"lock_assist,omitempty"`
+	AmpAxis          float64 `json:"amp_axis"`
+	PhiAxis          float64 `json:"phi_axis"`
+	YawAxis          float64 `json:"yaw_axis"`
+	PitchAxis        float64 `json:"pitch_axis"`
+	HoldAmpLock      bool    `json:"hold_amp_lock,omitempty"`
+	HoldPhiLock      bool    `json:"hold_phi_lock,omitempty"`
+	HoldYawLock      bool    `json:"hold_yaw_lock,omitempty"`
+	HoldPitchLock    bool    `json:"hold_pitch_lock,omitempty"`
+	OmegaTarget      float64 `json:"omega_target,omitempty"`
+	QTarget          float64 `json:"q_target,omitempty"`
+	BetaTarget       float64 `json:"beta_target,omitempty"`
+	PlasmaTarget     float64 `json:"plasma_target,omitempty"`
+	ThrottleTarget   float64 `json:"throttle_target,omitempty"`
+	EMChargeTarget   float64 `json:"em_charge_target,omitempty"`
+	EFieldTarget     float64 `json:"e_field_target,omitempty"`
+	BFieldTarget     float64 `json:"b_field_target,omitempty"`
+	LockAssist       *bool   `json:"lock_assist,omitempty"`
+	AutoTrim         bool    `json:"auto_trim,omitempty"`
+	AssistGoal       string  `json:"assist_goal,omitempty"`
+	AutoWeight       float64 `json:"auto_weight,omitempty"`
+	AutoVertical     float64 `json:"auto_vertical,omitempty"`
+	AutoAltitude     float64 `json:"auto_altitude,omitempty"`
+	AssistSpeedCap   float64 `json:"assist_speed_cap,omitempty"`
+	AssistBrakeGain  float64 `json:"assist_brake_gain,omitempty"`
+	NavMaxSpeed      float64 `json:"nav_max_speed,omitempty"`
+	NavStopRadius    float64 `json:"nav_stop_radius,omitempty"`
+	NavTopActive     bool    `json:"nav_top_active,omitempty"`
+	NavTopGoalX      float64 `json:"nav_top_goal_x,omitempty"`
+	NavTopGoalY      float64 `json:"nav_top_goal_y,omitempty"`
+	NavTopGoalZ      float64 `json:"nav_top_goal_z,omitempty"`
+	NavTopGoalMode   string  `json:"nav_top_goal_mode,omitempty"`
+	NavProfileActive bool    `json:"nav_profile_active,omitempty"`
 }
 
 type gameStepRequest struct {
@@ -280,43 +303,57 @@ type gameStepState struct {
 	ResonatorBeta   float64 `json:"resonator_beta"`
 	ResonatorOmega0 float64 `json:"resonator_omega0"`
 
-	PhaseError      float64 `json:"phase_error"`
-	LockQuality     float64 `json:"lock_quality"`
-	LockFlag        bool    `json:"lock_flag"`
-	DriveAmp        float64 `json:"drive_amp"`
-	OmegaBase       float64 `json:"omega_base"`
-	DriveOmega      float64 `json:"drive_omega"`
-	DrivePhase      float64 `json:"drive_phase"`
-	PLLFreqDelta    float64 `json:"pll_freq_delta"`
-	OscMag          float64 `json:"osc_mag"`
-	DrivePower      float64 `json:"drive_power"`
-	PlasmaPower     float64 `json:"plasma_power"`
-	Energy          float64 `json:"energy"`
-	DragForceMag    float64 `json:"drag_force_mag"`
-	DragPower       float64 `json:"drag_power"`
-	DragCdEff       float64 `json:"drag_cd_eff"`
-	DragAreaRef     float64 `json:"drag_area_ref"`
-	PlasmaReduction float64 `json:"plasma_drag_reduction"`
-	LiftForceMag    float64 `json:"lift_force_mag"`
-	ThrustForceMag  float64 `json:"thrust_force_mag"`
-	EMForceMag      float64 `json:"em_force_mag"`
-	Mach            float64 `json:"mach"`
-	AoA             float64 `json:"aoa_rad"`
-	LiftCoeff       float64 `json:"lift_coeff"`
-	GLoad           float64 `json:"g_load"`
-	DynamicPressure float64 `json:"dynamic_pressure"`
-	HeatFlux        float64 `json:"heat_flux"`
-	SkinTempK       float64 `json:"skin_temp_k"`
-	StructOK        bool    `json:"struct_ok"`
-	PilotOK         bool    `json:"pilot_ok"`
-	WarningFlags    string  `json:"warning_flags"`
-	PilotStress     float64 `json:"pilot_stress"`
-	StructFatigue   float64 `json:"struct_fatigue"`
-	GAxisLong       float64 `json:"g_axis_long"`
-	GAxisLat        float64 `json:"g_axis_lat"`
-	GAxisVert       float64 `json:"g_axis_vert"`
-	RelGamma        float64 `json:"rel_gamma"`
-	RelBeta         float64 `json:"rel_beta"`
+	PhaseError        float64 `json:"phase_error"`
+	LockQuality       float64 `json:"lock_quality"`
+	LockFlag          bool    `json:"lock_flag"`
+	DriveAmp          float64 `json:"drive_amp"`
+	OmegaBase         float64 `json:"omega_base"`
+	DriveOmega        float64 `json:"drive_omega"`
+	DrivePhase        float64 `json:"drive_phase"`
+	PLLFreqDelta      float64 `json:"pll_freq_delta"`
+	OscMag            float64 `json:"osc_mag"`
+	DrivePower        float64 `json:"drive_power"`
+	PlasmaPower       float64 `json:"plasma_power"`
+	Energy            float64 `json:"energy"`
+	DragForceMag      float64 `json:"drag_force_mag"`
+	DragPower         float64 `json:"drag_power"`
+	ThrustPower       float64 `json:"thrust_power"`
+	EMPower           float64 `json:"em_power"`
+	ClimbPower        float64 `json:"climb_power"`
+	RequiredPower     float64 `json:"required_power"`
+	PowerReqCoupler   float64 `json:"power_req_coupler"`
+	PowerReqPlasma    float64 `json:"power_req_plasma"`
+	PowerReqThrust    float64 `json:"power_req_thrust"`
+	PowerReqEM        float64 `json:"power_req_em"`
+	PowerGrantCoupler float64 `json:"power_grant_coupler"`
+	PowerGrantPlasma  float64 `json:"power_grant_plasma"`
+	PowerGrantThrust  float64 `json:"power_grant_thrust"`
+	PowerGrantEM      float64 `json:"power_grant_em"`
+	PowerCurtailFrac  float64 `json:"power_curtail_frac"`
+	EnergyPool        float64 `json:"energy_pool"`
+	DragCdEff         float64 `json:"drag_cd_eff"`
+	DragAreaRef       float64 `json:"drag_area_ref"`
+	PlasmaReduction   float64 `json:"plasma_drag_reduction"`
+	LiftForceMag      float64 `json:"lift_force_mag"`
+	ThrustForceMag    float64 `json:"thrust_force_mag"`
+	EMForceMag        float64 `json:"em_force_mag"`
+	Mach              float64 `json:"mach"`
+	AoA               float64 `json:"aoa_rad"`
+	LiftCoeff         float64 `json:"lift_coeff"`
+	GLoad             float64 `json:"g_load"`
+	DynamicPressure   float64 `json:"dynamic_pressure"`
+	HeatFlux          float64 `json:"heat_flux"`
+	SkinTempK         float64 `json:"skin_temp_k"`
+	StructOK          bool    `json:"struct_ok"`
+	PilotOK           bool    `json:"pilot_ok"`
+	WarningFlags      string  `json:"warning_flags"`
+	PilotStress       float64 `json:"pilot_stress"`
+	StructFatigue     float64 `json:"struct_fatigue"`
+	GAxisLong         float64 `json:"g_axis_long"`
+	GAxisLat          float64 `json:"g_axis_lat"`
+	GAxisVert         float64 `json:"g_axis_vert"`
+	RelGamma          float64 `json:"rel_gamma"`
+	RelBeta           float64 `json:"rel_beta"`
 
 	YukawaAlpha            float64 `json:"yukawa_alpha"`
 	YukawaLambda           float64 `json:"yukawa_lambda"`
@@ -352,6 +389,12 @@ type gameStepState struct {
 	ControlPhiAxis        float64 `json:"control_phi_axis"`
 	ControlYawAxis        float64 `json:"control_yaw_axis"`
 	ControlPitchAxis      float64 `json:"control_pitch_axis"`
+	AssistPhase           string  `json:"assist_phase"`
+	NavDistance           float64 `json:"nav_distance"`
+	NavVAlong             float64 `json:"nav_v_along"`
+	CoastCapture          bool    `json:"coast_capture"`
+	NavTopReached         bool    `json:"nav_top_reached"`
+	NavProfileReached     bool    `json:"nav_profile_reached"`
 }
 
 type gameControlState struct {
@@ -451,13 +494,36 @@ type gameSession struct {
 	negMassQGCraft      float64
 	negMassRunawayLimit float64
 	negMassOverrides    map[string]float64
+	bodyIntegrator      string
+	bodySubsteps        int
 
-	controls      gameControlState
-	limits        gameControlLimits
-	craftScale    float64
-	skinTempK     float64
-	pilotStress   float64
-	structFatigue float64
+	controls          gameControlState
+	limits            gameControlLimits
+	assistPhase       string
+	navDistance       float64
+	navVAlong         float64
+	coastCapture      bool
+	navTopReached     bool
+	navProfileReached bool
+	navProfilePrevErr float64
+	navProfileWasOn   bool
+	craftScale        float64
+	skinTempK         float64
+	pilotStress       float64
+	structFatigue     float64
+	lastEnergyBus     gameEnergyBus
+}
+
+type gameEnergyBus struct {
+	ReqCouplerW   float64
+	ReqPlasmaW    float64
+	ReqThrustW    float64
+	ReqEMW        float64
+	GrantCouplerW float64
+	GrantPlasmaW  float64
+	GrantThrustW  float64
+	GrantEMW      float64
+	CurtailFrac   float64
 }
 
 func (s *paperServer) handleGameStart(w http.ResponseWriter, r *http.Request) {
@@ -582,7 +648,6 @@ func (s *paperServer) handleGameCalibration(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	const bigG = 6.67430e-11
 	keys := make([]string, 0, len(gamePlanetPresets))
 	for k := range gamePlanetPresets {
 		keys = append(keys, k)
@@ -593,7 +658,7 @@ func (s *paperServer) handleGameCalibration(w http.ResponseWriter, r *http.Reque
 		p := gamePlanetPresets[k]
 		g := 0.0
 		if p.Radius > 0 {
-			g = bigG * p.Mass / (p.Radius * p.Radius)
+			g = gameBigG * p.Mass / (p.Radius * p.Radius)
 		}
 		out = append(out, gameCalibrationItem{
 			Preset:            k,
@@ -791,6 +856,8 @@ func newGameSession(id, cfgPath string, cfg config.Scenario, startOnGround bool,
 		negMassQGCraft:      negMassQGCraft,
 		negMassRunawayLimit: negMassRunawayLimit,
 		negMassOverrides:    copyChargeOverrides(cfg.GravityModel.NegMass.QGOverrides),
+		bodyIntegrator:      "semi_implicit",
+		bodySubsteps:        1,
 		controls: gameControlState{
 			AmpTarget:      couplerState.Cmd.Amplitude,
 			ThetaTarget:    couplerState.Cmd.ThetaTarget,
@@ -996,6 +1063,14 @@ func applyPlanetPresetToSession(session *gameSession, presetRaw string) {
 	if !ok {
 		return
 	}
+	if presetKey == "earth_moon" {
+		applyEarthMoonPresetToSession(session)
+		return
+	}
+	if presetKey == "milky_way" {
+		applyMilkyWayPresetToSession(session)
+		return
+	}
 	preset, ok := gamePlanetPresets[presetKey]
 	if !ok {
 		return
@@ -1037,6 +1112,186 @@ func applyPlanetPresetToSession(session *gameSession, presetRaw string) {
 	session.env.Atmosphere.Layers = defaultAtmosphereLayersForPreset(preset)
 	session.env.BField = mathx.Vec3{Y: preset.MagFieldTeslaEq}
 	session.craft.Position = session.bodies[idx].Position.Add(dir.Scale(preset.Radius + altitude))
+}
+
+func applyEarthMoonPresetToSession(session *gameSession) {
+	if session == nil {
+		return
+	}
+	earth, okEarth := gamePlanetPresets["earth"]
+	moon, okMoon := gamePlanetPresets["moon"]
+	if !okEarth || !okMoon {
+		return
+	}
+	if len(session.bodies) == 0 {
+		return
+	}
+
+	idx := session.primaryIdx
+	if idx < 0 || idx >= len(session.bodies) {
+		idx = 0
+	}
+	primary := session.bodies[idx]
+	rel := session.craft.Position.Sub(primary.Position)
+	dist := rel.Norm()
+	altitude := 0.0
+	if dist > 0 {
+		altitude = dist - primary.Radius
+	}
+	if math.IsNaN(altitude) || math.IsInf(altitude, 0) || altitude < 0 {
+		altitude = 0
+	}
+	dir := rel.Normalize()
+	if dir.Norm2() == 0 {
+		dir = mathx.Vec3{Z: 1}
+	}
+
+	// Circular two-body initialization around the Earth-Moon barycenter.
+	// This is deterministic and stable under the existing semi-implicit integrator.
+	totalMass := earth.Mass + moon.Mass
+	if totalMass <= 0 {
+		totalMass = earth.Mass
+	}
+	rEarth := earthMoonDistanceM * (moon.Mass / totalMass)
+	rMoon := earthMoonDistanceM * (earth.Mass / totalMass)
+	omega := math.Sqrt((gameBigG * totalMass) / (earthMoonDistanceM * earthMoonDistanceM * earthMoonDistanceM))
+	vEarth := omega * rEarth
+	vMoon := omega * rMoon
+
+	earthBody := physics.CelestialBody{
+		Name:     earth.Name,
+		Mass:     earth.Mass,
+		Radius:   earth.Radius,
+		Position: mathx.Vec3{X: -rEarth, Y: 0, Z: 0},
+		Velocity: mathx.Vec3{X: 0, Y: -vEarth, Z: 0},
+	}
+	moonBody := physics.CelestialBody{
+		Name:     moon.Name,
+		Mass:     moon.Mass,
+		Radius:   moon.Radius,
+		Position: mathx.Vec3{X: rMoon, Y: 0, Z: 0},
+		Velocity: mathx.Vec3{X: 0, Y: vMoon, Z: 0},
+	}
+
+	if len(session.bodies) >= 2 {
+		session.bodies[0] = earthBody
+		session.bodies[1] = moonBody
+	} else {
+		session.bodies = []physics.CelestialBody{earthBody, moonBody}
+	}
+	session.primaryIdx = 0
+	if session.env.Ground.BodyIndex < 0 || session.env.Ground.BodyIndex >= len(session.bodies) {
+		session.env.Ground.BodyIndex = session.primaryIdx
+	}
+
+	session.env.Atmosphere.Enabled = earth.AtmosphereEnabled
+	session.env.Atmosphere.Rho0 = earth.AtmosphereRho0
+	session.env.Atmosphere.ScaleHeight = earth.AtmosphereScaleH
+	session.env.Atmosphere.Temperature0 = earth.AtmosphereT0
+	session.env.Atmosphere.LapseRate = earth.AtmosphereLapse
+	session.env.Atmosphere.Gamma = earth.AtmosphereGamma
+	session.env.Atmosphere.GasConstant = earth.AtmosphereR
+	session.env.Atmosphere.Layers = defaultAtmosphereLayersForPreset(earth)
+	session.env.BField = mathx.Vec3{Y: earth.MagFieldTeslaEq}
+
+	session.craft.Position = earthBody.Position.Add(dir.Scale(earth.Radius + altitude))
+	session.craft.Velocity = earthBody.Velocity
+}
+
+func applyMilkyWayPresetToSession(session *gameSession) {
+	if session == nil {
+		return
+	}
+	earth, okEarth := gamePlanetPresets["earth"]
+	moon, okMoon := gamePlanetPresets["moon"]
+	if !okEarth || !okMoon {
+		return
+	}
+	type orbitBody struct {
+		name   string
+		mass   float64
+		radius float64
+		rAU    float64
+	}
+	sunMass := 1.98847e30
+	sunRadius := 695_700_000.0
+	planets := []orbitBody{
+		{name: "mercury", mass: 3.3011e23, radius: 2_439_700, rAU: 0.387098},
+		{name: "venus", mass: 4.8675e24, radius: 6_051_800, rAU: 0.723332},
+		{name: "earth", mass: earth.Mass, radius: earth.Radius, rAU: 1.0},
+		{name: "mars", mass: 6.4171e23, radius: 3_389_500, rAU: 1.523679},
+		{name: "jupiter", mass: 1.8982e27, radius: 69_911_000, rAU: 5.2044},
+		{name: "saturn", mass: 5.6834e26, radius: 58_232_000, rAU: 9.5826},
+		{name: "uranus", mass: 8.6810e25, radius: 25_362_000, rAU: 19.2184},
+		{name: "neptune", mass: 1.02413e26, radius: 24_622_000, rAU: 30.11},
+	}
+	bodies := make([]physics.CelestialBody, 0, len(planets)+2)
+	bodies = append(bodies, physics.CelestialBody{
+		Name:     "sun",
+		Mass:     sunMass,
+		Radius:   sunRadius,
+		Position: mathx.Vec3{},
+		Velocity: mathx.Vec3{},
+	})
+	for i, p := range planets {
+		r := p.rAU * auMeters
+		phi := (float64(i) * (2 * math.Pi / float64(len(planets))))
+		x := r * math.Cos(phi)
+		y := r * math.Sin(phi)
+		v := math.Sqrt(gameBigG * sunMass / math.Max(r, 1))
+		vx := -v * math.Sin(phi)
+		vy := v * math.Cos(phi)
+		bodies = append(bodies, physics.CelestialBody{
+			Name:     p.name,
+			Mass:     p.mass,
+			Radius:   p.radius,
+			Position: mathx.Vec3{X: x, Y: y, Z: 0},
+			Velocity: mathx.Vec3{X: vx, Y: vy, Z: 0},
+		})
+	}
+	earthIdx := -1
+	for i := range bodies {
+		if bodies[i].Name == "earth" {
+			earthIdx = i
+			break
+		}
+	}
+	if earthIdx < 0 {
+		return
+	}
+	earthBody := bodies[earthIdx]
+	moonR := earthMoonDistanceM
+	moonV := math.Sqrt(gameBigG * earthBody.Mass / moonR)
+	bodies = append(bodies, physics.CelestialBody{
+		Name:     "moon",
+		Mass:     moon.Mass,
+		Radius:   moon.Radius,
+		Position: earthBody.Position.Add(mathx.Vec3{X: moonR, Y: 0, Z: 0}),
+		Velocity: earthBody.Velocity.Add(mathx.Vec3{X: 0, Y: moonV, Z: 0}),
+	})
+	session.bodies = bodies
+	var totalMomentum mathx.Vec3
+	for i := range session.bodies {
+		totalMomentum = totalMomentum.Add(session.bodies[i].Velocity.Scale(session.bodies[i].Mass))
+	}
+	if session.bodies[0].Mass > 0 {
+		session.bodies[0].Velocity = session.bodies[0].Velocity.Sub(totalMomentum.Scale(1.0 / session.bodies[0].Mass))
+	}
+	session.primaryIdx = earthIdx
+	session.env.Ground.BodyIndex = earthIdx
+	session.bodyIntegrator = "rk4"
+	session.bodySubsteps = 12
+	session.env.Atmosphere.Enabled = earth.AtmosphereEnabled
+	session.env.Atmosphere.Rho0 = earth.AtmosphereRho0
+	session.env.Atmosphere.ScaleHeight = earth.AtmosphereScaleH
+	session.env.Atmosphere.Temperature0 = earth.AtmosphereT0
+	session.env.Atmosphere.LapseRate = earth.AtmosphereLapse
+	session.env.Atmosphere.Gamma = earth.AtmosphereGamma
+	session.env.Atmosphere.GasConstant = earth.AtmosphereR
+	session.env.Atmosphere.Layers = defaultAtmosphereLayersForPreset(earth)
+	session.env.BField = mathx.Vec3{Y: earth.MagFieldTeslaEq}
+	session.craft.Position = earthBody.Position.Add(mathx.Vec3{Z: earth.Radius + 500.0})
+	session.craft.Velocity = earthBody.Velocity
 }
 
 func defaultAtmosphereLayersForPreset(p gamePlanetPreset) []physics.AtmosphereLayer {
@@ -1242,6 +1497,10 @@ func normalizePlanetPresetForGame(raw string) (string, bool) {
 		return "mercury", true
 	case "moon", "luna":
 		return "moon", true
+	case "earth_moon", "earth+moon", "earth-moon", "terra_luna":
+		return "earth_moon", true
+	case "milky_way", "milkyway", "galaxy", "solar_system":
+		return "milky_way", true
 	case "mars":
 		return "mars", true
 	case "venus":
@@ -1316,6 +1575,7 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 
 		primary := gs.primaryBodyLocked()
 		forceEval := physics.EvaluateForces(gs.craft, gs.env, primary, lastEval.effective)
+		forceEval = gs.enforceEnergyBudgetLocked(forceEval, gs.dt, primary, lastEval.effective)
 		gs.integrateLimitHistoryLocked(forceEval, gs.dt)
 		gs.craft.IntegrateSemiImplicit(gs.dt, forceEval.Net, mathx.Vec3{})
 
@@ -1324,7 +1584,18 @@ func (gs *gameSession) Step(steps int, input gameControlInput) (gameStepState, e
 			physics.ResolveGroundContact(&gs.craft, gs.env, ground)
 		}
 
-		physics.IntegrateBodiesSemiImplicit(gs.dt, gs.env.G, gs.bodies)
+		substeps := gs.bodySubsteps
+		if substeps < 1 {
+			substeps = 1
+		}
+		bodyDt := gs.dt / float64(substeps)
+		for bsi := 0; bsi < substeps; bsi++ {
+			if gs.bodyIntegrator == "rk4" {
+				physics.IntegrateBodiesRK4(bodyDt, gs.env.G, gs.bodies)
+			} else {
+				physics.IntegrateBodiesSemiImplicit(bodyDt, gs.env.G, gs.bodies)
+			}
+		}
 		if !gs.craft.Position.IsFinite() || !gs.craft.Velocity.IsFinite() {
 			return gameStepState{}, fmt.Errorf("state diverged at step %d", gs.step)
 		}
@@ -1400,6 +1671,64 @@ func (gs *gameSession) integrateLimitHistoryLocked(f physics.ForceBreakdown, dt 
 	}
 }
 
+func (gs *gameSession) enforceEnergyBudgetLocked(forceEval physics.ForceBreakdown, dt float64, primary physics.CelestialBody, gravityAccel mathx.Vec3) physics.ForceBreakdown {
+	if gs == nil || dt <= 0 || gs.couplerState == nil {
+		return forceEval
+	}
+	availableJ := math.Max(0, gs.couplerState.Energy)
+	reqPlasma := math.Max(0, forceEval.DragEval.PlasmaPower)
+	vRel := gs.craft.Velocity.Sub(primary.Velocity)
+	reqThrust := math.Max(0, forceEval.Thrust.Dot(vRel))
+	reqEM := math.Max(0, forceEval.EM.Dot(vRel))
+	req := energy.Request{
+		CouplerW: math.Max(0, gs.couplerState.DrivePower),
+		PlasmaW:  reqPlasma,
+		ThrustW:  reqThrust,
+		EMW:      reqEM,
+	}
+	grant := energy.Allocate(availableJ, dt, req)
+	scale := 1.0
+	totalReq := reqPlasma + reqThrust + reqEM
+	if totalReq > 1e-9 {
+		scale = (grant.PlasmaW + grant.ThrustW + grant.EMW) / totalReq
+	}
+	if scale < 0.999999 {
+		gs.craft.Drag.Plasma.Level = mathx.Clamp(gs.craft.Drag.Plasma.Level*scale, gamePlasmaMin, gamePlasmaMax)
+		gs.craft.Propulsion.Throttle = mathx.Clamp(gs.craft.Propulsion.Throttle*scale, -1, 1)
+		gs.craft.EM.ChargeC *= scale
+		forceEval = physics.EvaluateForces(gs.craft, gs.env, primary, gravityAccel)
+		reqPlasma = math.Max(0, forceEval.DragEval.PlasmaPower)
+		reqThrust = math.Max(0, forceEval.Thrust.Dot(vRel))
+		reqEM = math.Max(0, forceEval.EM.Dot(vRel))
+	}
+	couplerScale := 1.0
+	if req.CouplerW > 1e-9 {
+		couplerScale = grant.CouplerW / req.CouplerW
+	}
+	if couplerScale < 1.0 {
+		gs.couplerState.ADrive *= couplerScale
+		gs.couplerState.DrivePower = grant.CouplerW
+		gs.couplerState.LockQuality = math.Max(0, gs.couplerState.LockQuality-(1-couplerScale)*0.08)
+		gs.couplerState.C = gs.couplerState.Params.DefaultC + gs.couplerState.LockQuality*(gs.couplerState.C-gs.couplerState.Params.DefaultC)
+	}
+	gs.couplerState.Energy -= grant.UsedJ
+	if gs.couplerState.Energy < 0 {
+		gs.couplerState.Energy = 0
+	}
+	gs.lastEnergyBus = gameEnergyBus{
+		ReqCouplerW:   req.CouplerW,
+		ReqPlasmaW:    req.PlasmaW,
+		ReqThrustW:    req.ThrustW,
+		ReqEMW:        req.EMW,
+		GrantCouplerW: grant.CouplerW,
+		GrantPlasmaW:  grant.PlasmaW,
+		GrantThrustW:  grant.ThrustW,
+		GrantEMW:      grant.EMW,
+		CurtailFrac:   grant.CurtailFrac,
+	}
+	return forceEval
+}
+
 func (gs *gameSession) updateDerivedActuationLocked(eval gameGravityEval) {
 	primary := gs.primaryBodyLocked()
 	up := gs.craft.Position.Sub(primary.Position).Normalize()
@@ -1443,6 +1772,222 @@ func (gs *gameSession) updateDerivedActuationLocked(eval gameGravityEval) {
 	gs.env.BField = planetB.Add(right.Scale(gs.controls.BFieldTarget))
 	gs.craft.EM.Enabled = math.Abs(gs.controls.EMChargeTarget) > 1e-9
 	gs.craft.EM.ChargeC = gs.controls.EMChargeTarget
+}
+
+func sanitizeOr(v, fallback float64) float64 {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return fallback
+	}
+	return v
+}
+
+func (gs *gameSession) applyAssistAutopilotLocked(input gameControlInput, dt float64) {
+	if gs == nil {
+		return
+	}
+	gs.assistPhase = "manual"
+	gs.navDistance = 0
+	gs.navVAlong = 0
+	gs.coastCapture = false
+	gs.navTopReached = false
+	gs.navProfileReached = false
+	if !gs.controls.LockAssist || !input.AutoTrim {
+		return
+	}
+	gs.assistPhase = "assist"
+	ampLocked := input.HoldAmpLock
+	phiLocked := input.HoldPhiLock
+	yawLocked := input.HoldYawLock
+	pitchLocked := input.HoldPitchLock
+	assistGoalKey := strings.ToLower(strings.TrimSpace(input.AssistGoal))
+	primary := gs.primaryBodyLocked()
+	up := gs.craft.Position.Sub(primary.Position).Normalize()
+	if up.Norm2() == 0 {
+		up = mathx.Vec3{Z: 1}
+	}
+	eval := gs.evaluateGravityLocked()
+	downRaw := -eval.raw.Dot(up)
+	downEff := -eval.effective.Dot(up)
+	weightRatio := 1.0
+	if math.Abs(downRaw) > 1e-9 {
+		weightRatio = downEff / downRaw
+	}
+	altitudeNow := math.Max(0, gs.craft.Position.Sub(primary.Position).Norm()-primary.Radius)
+	targetAltitude := math.Max(0, sanitizeOr(input.AutoAltitude, altitudeNow))
+	targetWeight := sanitizeOr(input.AutoWeight, 1.0)
+	targetVertical := sanitizeOr(input.AutoVertical, 0.0)
+	altErr := mathx.Clamp(targetAltitude-altitudeNow, -1e8, 1e8)
+	verticalVelLocal := gs.craft.Velocity.Dot(up)
+	useAltitudeHold := input.NavProfileActive || assistGoalKey == "hover" || assistGoalKey == "ascend" || assistGoalKey == "descend"
+	if useAltitudeHold {
+		targetVertical += mathx.Clamp(altErr*0.08, -900, 900)
+	}
+	if !input.NavProfileActive {
+		gs.navProfileWasOn = false
+	}
+	if input.NavProfileActive && !phiLocked {
+		gs.assistPhase = "nav_profile"
+		targetVertical += mathx.Clamp(altErr*0.06, -320, 320)
+		prevErr := gs.navProfilePrevErr
+		if !gs.navProfileWasOn {
+			prevErr = altErr
+			gs.navProfileWasOn = true
+		}
+		crossedTarget := (prevErr > 0 && altErr <= 0) || (prevErr < 0 && altErr >= 0)
+		if input.NavTopActive {
+			gs.navProfileReached = math.Abs(altErr) <= 60 && math.Abs(verticalVelLocal) <= 10
+		} else {
+			// Profile-only command means "go to this altitude and clear"; crossing
+			// the altitude should be sufficient even at high vertical speed.
+			gs.navProfileReached = crossedTarget || math.Abs(altErr) <= 80
+		}
+		gs.navProfilePrevErr = altErr
+	}
+	forward, right := tangentBasisFromUp(up)
+	angRate := gs.craft.AngularVelocity.Norm()
+	stability := mathx.Clamp(1.0-(angRate/2.8), 0.15, 1.0)
+
+	if input.NavTopActive && !yawLocked && !pitchLocked {
+		navErrX := input.NavTopGoalX - gs.craft.Position.X
+		navErrY := input.NavTopGoalY - gs.craft.Position.Y
+		navForwardErr := navErrX
+		navRightErr := navErrY
+		dist := math.Hypot(navErrX, navErrY)
+		if strings.EqualFold(strings.TrimSpace(input.NavTopGoalMode), "planetary") {
+			craftRel := gs.craft.Position.Sub(primary.Position)
+			goalRel := mathx.Vec3{X: input.NavTopGoalX, Y: input.NavTopGoalY, Z: sanitizeOr(input.NavTopGoalZ, craftRel.Z)}
+			cMag := craftRel.Norm()
+			gMag := goalRel.Norm()
+			if cMag > 1e-6 && gMag > 1e-6 {
+				cu := craftRel.Scale(1 / cMag)
+				gu := goalRel.Scale(1 / gMag)
+				dot := mathx.Clamp(cu.Dot(gu), -1, 1)
+				ang := math.Acos(dot)
+				t := gu.Sub(cu.Scale(dot))
+				tm := t.Norm()
+				if tm > 1e-6 {
+					arc := ang * math.Max(1, 0.5*(cMag+gMag))
+					tDir := t.Scale(1 / tm)
+					navForwardErr = tDir.Dot(forward) * arc
+					navRightErr = tDir.Dot(right) * arc
+					dist = math.Abs(arc)
+				}
+			}
+		} else {
+			navForwardErr = navErrX*forward.X + navErrY*forward.Y
+			navRightErr = navErrX*right.X + navErrY*right.Y
+		}
+		navYawCmd := mathx.Clamp(navRightErr/1500, -1, 1) * stability
+		navPitchCmd := mathx.Clamp(-navForwardErr/1700, -1, 1) * stability
+		gs.controls.AxisYaw = mathx.WrapAngle(gs.controls.AxisYaw + (navYawCmd*0.72)*gs.limits.YawAxisRate*dt)
+		gs.controls.AxisPitch = mathx.Clamp(gs.controls.AxisPitch+(navPitchCmd*0.64)*gs.limits.PitchAxisRate*dt, gs.limits.MinAxisPitch, gs.limits.MaxAxisPitch)
+		lateralDemand := math.Hypot(navYawCmd, navPitchCmd)
+		if !ampLocked {
+			gs.controls.AmpTarget = mathx.Clamp(gs.controls.AmpTarget+lateralDemand*0.24*gs.limits.AmpAxisRate*dt, gs.couplerState.Params.MinAmplitude, gs.couplerState.Params.MaxAmplitude)
+		}
+
+		vAlong := 0.0
+		if dist > 1e-6 {
+			alongDir := forward.Scale(navForwardErr).Add(right.Scale(navRightErr))
+			if alongDir.Norm2() > 1e-9 {
+				u := alongDir.Normalize()
+				vAlong = gs.craft.Velocity.Dot(u)
+			}
+		}
+		// Combine horizontal map-goal and profile altitude-goal into one pursuit
+		// metric so speed planning and braking solve both simultaneously.
+		distCombined := dist
+		vAlongCombined := vAlong
+		if input.NavProfileActive {
+			distCombined = math.Hypot(dist, math.Abs(altErr))
+			if distCombined > 1e-6 {
+				altToward := verticalVelLocal
+				if altErr < 0 {
+					altToward = -verticalVelLocal
+				}
+				vAlongCombined = ((vAlong * dist) + (altToward * math.Abs(altErr))) / distCombined
+			}
+		}
+		gs.navDistance = distCombined
+		gs.navVAlong = vAlongCombined
+		speedNow := gs.craft.Velocity.Norm()
+		vCap := mathx.Clamp(sanitizeOr(input.NavMaxSpeed, sanitizeOr(input.AssistSpeedCap, 320)*1000), 20, 8000)
+		stopR := mathx.Clamp(sanitizeOr(input.NavStopRadius, 120), 5, 5000)
+		brakeGain := mathx.Clamp(sanitizeOr(input.AssistBrakeGain, 1.0), 0.1, 3.0)
+		aBrake := 70 + (180 * brakeGain)
+		stopErr := math.Max(0, distCombined-stopR)
+		brakeDistance := math.Max(1, (vAlongCombined*vAlongCombined)/(2*aBrake)+stopR)
+		brakeNow := distCombined <= brakeDistance || speedNow > vCap
+		if brakeNow {
+			gs.assistPhase = "nav_brake"
+		} else {
+			gs.assistPhase = "nav_push"
+		}
+		speedTarget := math.Min(vCap, math.Sqrt(math.Max(0, 2*aBrake*stopErr)))
+		speedErr := mathx.Clamp(speedTarget-vAlongCombined, -5000, 5000)
+		gs.controls.ThrottleTarget = mathx.Clamp((speedErr/math.Max(35, vCap*0.30))+(func() float64 {
+			if brakeNow {
+				return -0.12
+			}
+			return 0.08
+		}()), gs.limits.MinThrottleTarget, gs.limits.MaxThrottleTarget)
+		plasmaBase := 0.10
+		if speedNow > 0.8*vCap {
+			plasmaBase = 0.24
+		}
+		plasmaBrake := 0.0
+		if brakeNow {
+			plasmaBrake = 0.45
+		}
+		gs.controls.PlasmaTarget = mathx.Clamp(plasmaBase+plasmaBrake+(math.Max(0, speedNow-vCap)/math.Max(40, vCap)), gs.limits.MinPlasmaTarget, gs.limits.MaxPlasmaTarget)
+		approach := mathx.Clamp(stopErr/math.Max(100, stopR*8), 0, 1)
+		gs.controls.EFieldTarget = mathx.Clamp((func() float64 {
+			if brakeNow {
+				return 2800
+			}
+			return 1800
+		}())+(900*approach), gs.limits.MinEFieldTarget, gs.limits.MaxEFieldTarget)
+		gs.controls.BFieldTarget = mathx.Clamp((func() float64 {
+			if brakeNow {
+				return 0.26
+			}
+			return 0.16
+		}())+(0.08*approach), gs.limits.MinBFieldTarget, gs.limits.MaxBFieldTarget)
+		gs.controls.EMChargeTarget = mathx.Clamp((func() float64 {
+			if brakeNow {
+				return 1300
+			}
+			return 700
+		}())+(900*approach), gs.limits.MinEMChargeTarget, gs.limits.MaxEMChargeTarget)
+		gs.controls.QTarget = mathx.Clamp(math.Max(gs.controls.QTarget, 220+(260*approach)), gs.limits.MinQTarget, gs.limits.MaxQTarget)
+		gs.controls.BetaTarget = mathx.Clamp(math.Max(gs.controls.BetaTarget, 2.4+(2.4*approach)), gs.limits.MinBetaTarget, gs.limits.MaxBetaTarget)
+		circularBand := math.Abs(speedNow-math.Sqrt(math.Max(0, gameBigG*primary.Mass/math.Max(primary.Radius+altitudeNow, 1)))) <= math.Max(30, 0.16*math.Max(1, math.Sqrt(math.Max(0, gameBigG*primary.Mass/math.Max(primary.Radius+altitudeNow, 1)))))
+		gs.coastCapture = distCombined <= math.Max(stopR*1.8, 80) && math.Abs(verticalVelLocal) <= 10 && circularBand
+		if gs.coastCapture {
+			gs.assistPhase = "coast_capture"
+		}
+		gs.navTopReached = distCombined <= stopR && speedNow <= math.Max(8, 0.06*vCap)
+	} else if input.NavTopActive {
+		gs.assistPhase = "nav_blocked_locked"
+	} else {
+		// No horizontal goal active: decay lateral steering toward neutral so
+		// profile-only navigation does not keep seeking on X/Y axes.
+		gs.controls.AxisYaw = mathx.WrapAngle(gs.controls.AxisYaw * math.Max(0, 1-(2.2*dt)))
+		gs.controls.AxisPitch = mathx.Clamp(gs.controls.AxisPitch*math.Max(0, 1-(2.2*dt)), gs.limits.MinAxisPitch, gs.limits.MaxAxisPitch)
+	}
+	if angRate > 2.8 && (!yawLocked || !pitchLocked) {
+		gs.assistPhase = "gyro_recover"
+		gs.controls.ThrottleTarget = mathx.Clamp(gs.controls.ThrottleTarget*0.7, gs.limits.MinThrottleTarget, gs.limits.MaxThrottleTarget)
+		if !ampLocked {
+			gs.controls.AmpTarget = mathx.Clamp(gs.controls.AmpTarget*0.85, gs.couplerState.Params.MinAmplitude, gs.couplerState.Params.MaxAmplitude)
+		}
+	}
+
+	verticalErr := mathx.Clamp(targetVertical-verticalVelLocal, -100000, 100000)
+	weightErr := mathx.Clamp(targetWeight-weightRatio, -1000, 1000)
+	if !phiLocked {
+		gs.controls.ThetaTarget = mathx.Clamp(gs.controls.ThetaTarget+((weightErr*0.25)+(verticalErr*0.0020))*gs.limits.PhiAxisRate*dt, gs.limits.MinThetaTarget, gs.limits.MaxThetaTarget)
+	}
 }
 
 func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
@@ -1491,6 +2036,7 @@ func (gs *gameSession) applyControlsLocked(input gameControlInput, dt float64) {
 	gs.controls.ThetaTarget = mathx.Clamp(gs.controls.ThetaTarget+phiAxis*gs.limits.PhiAxisRate*dt, gs.limits.MinThetaTarget, gs.limits.MaxThetaTarget)
 	gs.controls.AxisYaw = mathx.WrapAngle(gs.controls.AxisYaw + yawAxis*gs.limits.YawAxisRate*dt)
 	gs.controls.AxisPitch = mathx.Clamp(gs.controls.AxisPitch+pitchAxis*gs.limits.PitchAxisRate*dt, gs.limits.MinAxisPitch, gs.limits.MaxAxisPitch)
+	gs.applyAssistAutopilotLocked(input, dt)
 
 	if !gs.couplerEnabled {
 		return
@@ -1748,7 +2294,18 @@ func (gs *gameSession) evaluateGravityLocked() gameGravityEval {
 	switch gs.gravityModel {
 	case "coupling":
 		if gs.couplerEnabled {
-			eval.effective = gs.couplerState.EffectiveGravityAccel(gRaw, gs.craft.Orientation)
+			coupled := gs.couplerState.EffectiveGravityAccel(gRaw, gs.craft.Orientation)
+			// Authority gate: tie antigravity effect to usable resonator state so
+			// low-Q/low-beta/low-drive settings cannot produce full lift.
+			qTarget := math.Max(gs.controls.QTarget, 0)
+			betaTarget := math.Max(gs.controls.BetaTarget, 0)
+			ampTarget := math.Max(gs.controls.AmpTarget, 0)
+			lockQ := mathx.Clamp(gs.couplerState.LockQuality, 0, 1)
+			qFactor := 1 - math.Exp(-qTarget/120.0)
+			betaFactor := 1 - math.Exp(-betaTarget/1.2)
+			ampFactor := 1 - math.Exp(-ampTarget/2.5)
+			authority := mathx.Clamp(lockQ*qFactor*betaFactor*ampFactor, 0, 1)
+			eval.effective = gRaw.Scale(1 - authority).Add(coupled.Scale(authority))
 		}
 	case "yukawa":
 		var diag []physics.YukawaBodyDiagnostic
@@ -1821,7 +2378,12 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 
 	warpAxis := gs.warpAxisWorldLocked()
 	forceEval := physics.EvaluateForces(gs.craft, gs.env, primary, eval.effective)
-	dragPower := forceEval.DragEval.Force.Norm() * forceEval.DragEval.Speed
+	vRel := gs.craft.Velocity.Sub(primary.Velocity)
+	dragPower := math.Max(0, -forceEval.Drag.Dot(vRel))
+	thrustPower := math.Max(0, forceEval.Thrust.Dot(vRel))
+	emPower := math.Max(0, forceEval.EM.Dot(vRel))
+	climbPower := math.Max(0, -gs.craft.Mass*eval.effective.Dot(vRel))
+	requiredPower := dragPower + thrustPower + emPower + climbPower + math.Max(0, forceEval.DragEval.PlasmaPower)
 	combinedWarnings := append([]string{}, forceEval.Warnings...)
 	if gs.pilotStress > 1.0 {
 		combinedWarnings = append(combinedWarnings, "pilot-stress")
@@ -1884,43 +2446,57 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		ResonatorBeta:   gs.couplerState.Params.Beta,
 		ResonatorOmega0: gs.couplerState.Params.Omega0,
 
-		PhaseError:      gs.couplerState.PhaseError,
-		LockQuality:     gs.couplerState.LockQuality,
-		LockFlag:        gs.couplerState.LockQuality >= 0.5,
-		DriveAmp:        gs.couplerState.ADrive,
-		OmegaBase:       gs.couplerState.OmegaBase,
-		DriveOmega:      gs.couplerState.OmegaDrive,
-		DrivePhase:      gs.couplerState.ThetaDrive,
-		PLLFreqDelta:    gs.couplerState.DeltaOmega,
-		OscMag:          cmplx.Abs(gs.couplerState.Z),
-		DrivePower:      gs.couplerState.DrivePower,
-		PlasmaPower:     forceEval.DragEval.PlasmaPower,
-		Energy:          gs.couplerState.Energy,
-		DragForceMag:    forceEval.DragEval.Force.Norm(),
-		DragPower:       dragPower,
-		DragCdEff:       forceEval.DragEval.EffectiveCd,
-		DragAreaRef:     forceEval.DragEval.ReferenceArea,
-		PlasmaReduction: forceEval.DragEval.PlasmaReduction,
-		LiftForceMag:    forceEval.Lift.Norm(),
-		ThrustForceMag:  forceEval.Thrust.Norm(),
-		EMForceMag:      forceEval.EM.Norm(),
-		Mach:            forceEval.DragEval.Mach,
-		AoA:             forceEval.AoA,
-		LiftCoeff:       forceEval.LiftCoeff,
-		GLoad:           forceEval.GLoad,
-		DynamicPressure: forceEval.DynamicQ,
-		HeatFlux:        forceEval.HeatFlux,
-		SkinTempK:       gs.skinTempK,
-		StructOK:        structOK,
-		PilotOK:         pilotOK,
-		WarningFlags:    strings.Join(combinedWarnings, ","),
-		PilotStress:     gs.pilotStress,
-		StructFatigue:   gs.structFatigue,
-		GAxisLong:       forceEval.GAxisLong,
-		GAxisLat:        forceEval.GAxisLat,
-		GAxisVert:       forceEval.GAxisVert,
-		RelGamma:        forceEval.RelGamma,
-		RelBeta:         forceEval.RelBeta,
+		PhaseError:        gs.couplerState.PhaseError,
+		LockQuality:       gs.couplerState.LockQuality,
+		LockFlag:          gs.couplerState.LockQuality >= 0.5,
+		DriveAmp:          gs.couplerState.ADrive,
+		OmegaBase:         gs.couplerState.OmegaBase,
+		DriveOmega:        gs.couplerState.OmegaDrive,
+		DrivePhase:        gs.couplerState.ThetaDrive,
+		PLLFreqDelta:      gs.couplerState.DeltaOmega,
+		OscMag:            cmplx.Abs(gs.couplerState.Z),
+		DrivePower:        gs.couplerState.DrivePower,
+		PlasmaPower:       forceEval.DragEval.PlasmaPower,
+		Energy:            gs.couplerState.Energy,
+		DragForceMag:      forceEval.DragEval.Force.Norm(),
+		DragPower:         dragPower,
+		ThrustPower:       thrustPower,
+		EMPower:           emPower,
+		ClimbPower:        climbPower,
+		RequiredPower:     requiredPower,
+		PowerReqCoupler:   gs.lastEnergyBus.ReqCouplerW,
+		PowerReqPlasma:    gs.lastEnergyBus.ReqPlasmaW,
+		PowerReqThrust:    gs.lastEnergyBus.ReqThrustW,
+		PowerReqEM:        gs.lastEnergyBus.ReqEMW,
+		PowerGrantCoupler: gs.lastEnergyBus.GrantCouplerW,
+		PowerGrantPlasma:  gs.lastEnergyBus.GrantPlasmaW,
+		PowerGrantThrust:  gs.lastEnergyBus.GrantThrustW,
+		PowerGrantEM:      gs.lastEnergyBus.GrantEMW,
+		PowerCurtailFrac:  gs.lastEnergyBus.CurtailFrac,
+		EnergyPool:        gs.couplerState.Energy,
+		DragCdEff:         forceEval.DragEval.EffectiveCd,
+		DragAreaRef:       forceEval.DragEval.ReferenceArea,
+		PlasmaReduction:   forceEval.DragEval.PlasmaReduction,
+		LiftForceMag:      forceEval.Lift.Norm(),
+		ThrustForceMag:    forceEval.Thrust.Norm(),
+		EMForceMag:        forceEval.EM.Norm(),
+		Mach:              forceEval.DragEval.Mach,
+		AoA:               forceEval.AoA,
+		LiftCoeff:         forceEval.LiftCoeff,
+		GLoad:             forceEval.GLoad,
+		DynamicPressure:   forceEval.DynamicQ,
+		HeatFlux:          forceEval.HeatFlux,
+		SkinTempK:         gs.skinTempK,
+		StructOK:          structOK,
+		PilotOK:           pilotOK,
+		WarningFlags:      strings.Join(combinedWarnings, ","),
+		PilotStress:       gs.pilotStress,
+		StructFatigue:     gs.structFatigue,
+		GAxisLong:         forceEval.GAxisLong,
+		GAxisLat:          forceEval.GAxisLat,
+		GAxisVert:         forceEval.GAxisVert,
+		RelGamma:          forceEval.RelGamma,
+		RelBeta:           forceEval.RelBeta,
 
 		YukawaAlpha:            gs.yukawaAlpha,
 		YukawaLambda:           gs.yukawaLambda,
@@ -1956,6 +2532,12 @@ func (gs *gameSession) buildStateLocked(eval gameGravityEval) gameStepState {
 		ControlPhiAxis:        gs.controls.PhiAxis,
 		ControlYawAxis:        gs.controls.YawAxis,
 		ControlPitchAxis:      gs.controls.PitchAxis,
+		AssistPhase:           gs.assistPhase,
+		NavDistance:           gs.navDistance,
+		NavVAlong:             gs.navVAlong,
+		CoastCapture:          gs.coastCapture,
+		NavTopReached:         gs.navTopReached,
+		NavProfileReached:     gs.navProfileReached,
 	}
 }
 

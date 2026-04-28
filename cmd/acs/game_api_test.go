@@ -137,6 +137,96 @@ func TestPlanetPresetAtmosphereConsistency(t *testing.T) {
 	}
 }
 
+func TestEarthMoonPresetConfiguresTwoBodyOrbit(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+
+	session, err := newGameSession("test-earth-moon", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth_moon", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	if len(session.bodies) < 2 {
+		t.Fatalf("earth_moon should configure at least two bodies, got %d", len(session.bodies))
+	}
+	if session.primaryIdx != 0 {
+		t.Fatalf("earth_moon primary index must be earth at 0, got %d", session.primaryIdx)
+	}
+	if session.bodies[0].Name != "earth" {
+		t.Fatalf("expected body[0]=earth, got %q", session.bodies[0].Name)
+	}
+	if session.bodies[1].Name != "moon" {
+		t.Fatalf("expected body[1]=moon, got %q", session.bodies[1].Name)
+	}
+	sep := session.bodies[1].Position.Sub(session.bodies[0].Position).Norm()
+	relErr := math.Abs(sep-earthMoonDistanceM) / earthMoonDistanceM
+	if relErr > 0.02 {
+		t.Fatalf("unexpected earth-moon separation: got %.3f m want %.3f m relerr %.4f", sep, earthMoonDistanceM, relErr)
+	}
+	if session.bodies[0].Velocity.Norm() <= 0 || session.bodies[1].Velocity.Norm() <= 0 {
+		t.Fatalf("expected non-zero orbital velocities, earth=%+v moon=%+v", session.bodies[0].Velocity, session.bodies[1].Velocity)
+	}
+	state, err := session.State()
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	if state.PrimaryName != "earth" {
+		t.Fatalf("expected primary earth in state, got %q", state.PrimaryName)
+	}
+	if !state.AtmosphereEnabled {
+		t.Fatalf("earth_moon should keep earth atmosphere enabled at craft locale")
+	}
+}
+
+func TestMilkyWayPresetConfiguresSolarSandboxAndEarthStart(t *testing.T) {
+	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
+	cfg, err := config.Load(scenarioPath)
+	if err != nil {
+		t.Fatalf("load scenario: %v", err)
+	}
+
+	session, err := newGameSession("test-mw", scenarioPath, cfg, false, "saucer", "resonant_pll", "milky_way", 1)
+	if err != nil {
+		t.Fatalf("new session: %v", err)
+	}
+	if len(session.bodies) < 10 {
+		t.Fatalf("expected solar sandbox bodies, got %d", len(session.bodies))
+	}
+	if session.primaryIdx < 0 || session.primaryIdx >= len(session.bodies) {
+		t.Fatalf("invalid primary index %d", session.primaryIdx)
+	}
+	if session.bodies[session.primaryIdx].Name != "earth" {
+		t.Fatalf("expected primary earth, got %q", session.bodies[session.primaryIdx].Name)
+	}
+	foundSun := false
+	foundMoon := false
+	for i := range session.bodies {
+		if session.bodies[i].Name == "sun" {
+			foundSun = true
+		}
+		if session.bodies[i].Name == "moon" {
+			foundMoon = true
+		}
+	}
+	if !foundSun || !foundMoon {
+		t.Fatalf("expected both sun and moon in milky_way preset, sun=%v moon=%v", foundSun, foundMoon)
+	}
+	earthPos := session.bodies[session.primaryIdx].Position
+	craftRel := session.craft.Position.Sub(earthPos)
+	alt := craftRel.Norm() - session.bodies[session.primaryIdx].Radius
+	if math.Abs(alt-500.0) > 20 {
+		t.Fatalf("expected earth-start altitude ~500m, got %.3f", alt)
+	}
+	if !session.env.Atmosphere.Enabled {
+		t.Fatalf("earth-start atmosphere should be enabled")
+	}
+	if session.bodyIntegrator != "rk4" || session.bodySubsteps < 2 {
+		t.Fatalf("milky_way should enable higher-fidelity body integration, got integrator=%q substeps=%d", session.bodyIntegrator, session.bodySubsteps)
+	}
+}
+
 func TestWarpDriveProfileStagesControlEnvelope(t *testing.T) {
 	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
 	cfg, err := config.Load(scenarioPath)

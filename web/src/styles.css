@@ -531,8 +531,34 @@
   }
 
   .flight-canvas-overlay {
-    height: clamp(4.35rem, 9dvh, 5.35rem);
+    height: clamp(5.4rem, 11dvh, 7rem);
     border-radius: 0.8rem;
+  }
+
+  .lab-overlay-digital {
+    min-height: clamp(5.4rem, 11dvh, 7rem);
+    border: 1px solid rgba(115, 156, 168, 0.18);
+    border-radius: 0.8rem;
+    background: radial-gradient(circle at 50% 0, rgba(24, 47, 66, 0.96), rgba(8, 15, 22, 0.98));
+    display: grid;
+    place-content: center;
+    text-align: center;
+    gap: 0.22rem;
+    padding: 0.35rem;
+  }
+
+  .lab-overlay-digital-main {
+    margin-bottom: 0;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 1.02rem;
+    color: rgba(236, 251, 246, 0.98) !important;
+  }
+
+  .lab-overlay-digital-sub {
+    margin-bottom: 0;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.74rem;
+    color: rgba(188, 226, 232, 0.92) !important;
   }
 
   .lab-player-note {
@@ -785,6 +811,15 @@
     font-size: 0.72rem;
   }
 
+  .lab-control-card.is-alert {
+    border-color: rgba(178, 66, 45, 0.45);
+    background:
+      linear-gradient(180deg, rgba(255, 245, 241, 0.98), rgba(255, 236, 228, 0.92));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      0 0 0 2px rgba(178, 66, 45, 0.12);
+  }
+
   .lab-control-card-head,
   .lab-subpanel-head {
     display: flex;
@@ -961,6 +996,20 @@
     border-radius: 0.65rem;
     background: rgba(255, 255, 255, 0.94);
     color: var(--cockpit-muted);
+  }
+
+  .lab-status-strip .lab-status.is-toast-flash {
+    border-color: rgba(214, 96, 72, 0.85);
+    background: rgba(255, 236, 229, 0.98);
+    color: rgba(126, 42, 29, 0.98);
+    box-shadow: 0 0 0 2px rgba(214, 96, 72, 0.22);
+    animation: labToastPulse 0.9s ease-out;
+  }
+
+  @keyframes labToastPulse {
+    0% { transform: scale(1); }
+    18% { transform: scale(1.015); }
+    100% { transform: scale(1); }
   }
 
   .lab-page-grid {
@@ -1339,9 +1388,25 @@
   }
 
   .lab-state-band,
+  .lab-graphs-band,
   .lab-data-band {
     background:
       linear-gradient(180deg, rgba(246, 252, 253, 0.98), rgba(238, 247, 249, 0.98));
+  }
+
+  .lab-graphs-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lab-telemetry-canvas {
+    display: block;
+    width: 100%;
+    height: clamp(7.25rem, 16dvh, 10rem);
+    border: 1px solid rgba(95, 128, 138, 0.2);
+    border-radius: 0.65rem;
+    background: rgba(250, 253, 254, 0.96);
   }
 
   .lab-cockpit-page .lab-state-stack,
@@ -1452,6 +1517,10 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .lab-graphs-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .lab-hud-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
@@ -1498,6 +1567,10 @@
 
     .lab-cockpit-page .lab-data-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .lab-cockpit-page .lab-graphs-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .lab-cockpit-page .lab-kpi-grid {

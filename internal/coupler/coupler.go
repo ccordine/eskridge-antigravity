@@ -166,10 +166,6 @@ func (s *State) Update(dt float64) {
 	s.OmegaBase = mathx.MoveToward(s.OmegaBase, cmdOrDefault(s.Cmd.OmegaBase, s.OmegaBase), s.Params.OmegaBaseRate*dt)
 	s.OmegaBase = mathx.Clamp(s.OmegaBase, s.Params.MinOmegaBase, s.Params.MaxOmegaBase)
 
-	if s.Energy <= 0 {
-		s.ADrive = 0
-	}
-
 	s.ThetaDrive = mathx.WrapPositive(s.ThetaDrive + s.OmegaDrive*dt)
 	drive := complex(s.ADrive*math.Cos(s.ThetaDrive), s.ADrive*math.Sin(s.ThetaDrive))
 
@@ -215,16 +211,7 @@ func (s *State) Update(dt float64) {
 	if s.Params.PowerLimit > 0 && s.DrivePower > s.Params.PowerLimit {
 		s.DrivePower = s.Params.PowerLimit
 	}
-	if s.Energy > 0 {
-		s.Energy -= s.DrivePower * dt
-		if s.Energy < 0 {
-			s.Energy = 0
-		}
-	}
-	if s.Energy <= 0 {
-		s.LockQuality = math.Max(0, s.LockQuality-s.Params.LockCollapse*dt)
-		s.C = s.Params.DefaultC
-	}
+	// Energy debiting/curtailment is handled by the shared energy manager.
 }
 
 func (s *State) EffectiveGravityAccel(g mathx.Vec3, orientation mathx.Quat) mathx.Vec3 {
