@@ -141,26 +141,47 @@ type vizStartEvent struct {
 }
 
 type vizSampleEvent struct {
-	Type                    string  `json:"type"`
-	Step                    int     `json:"step"`
-	Time                    float64 `json:"time"`
-	Altitude                float64 `json:"altitude"`
-	VerticalVel             float64 `json:"vertical_vel"`
-	GravityModel            string  `json:"gravity_model"`
-	CouplingC               float64 `json:"coupling_c"`
-	CouplingK               float64 `json:"coupling_k"`
-	LockQuality             float64 `json:"lock_quality"`
-	Energy                  float64 `json:"energy"`
-	DrivePower              float64 `json:"drive_power"`
-	RawGravity              float64 `json:"raw_gravity"`
-	EffectiveG              float64 `json:"effective_g"`
-	YukawaRepulsionPrimary  float64 `json:"yukawa_repulsion_primary"`
-	NegMassQGPrimary        float64 `json:"negmass_qg_primary"`
-	NegMassRunawayFlag      bool    `json:"negmass_runaway_flag"`
-	PhaseError              float64 `json:"phase_error"`
-	PositionZ               float64 `json:"position_z"`
-	VelocityZ               float64 `json:"velocity_z"`
-	GravityPower            float64 `json:"gravity_power"`
+	Type                        string  `json:"type"`
+	Step                        int     `json:"step"`
+	Time                        float64 `json:"time"`
+	Altitude                    float64 `json:"altitude"`
+	VerticalVel                 float64 `json:"vertical_vel"`
+	MetricModel                 string  `json:"metric_model"`
+	CouplingC                   float64 `json:"coupling_c"`
+	CouplingK                   float64 `json:"coupling_k"`
+	LockQuality                 float64 `json:"lock_quality"`
+	Energy                      float64 `json:"energy"`
+	DrivePower                  float64 `json:"drive_power"`
+	PhaseError                  float64 `json:"phase_error"`
+	PositionZ                   float64 `json:"position_z"`
+	VelocityZ                   float64 `json:"velocity_z"`
+	MetricDet                   float64 `json:"metric_det"`
+	InvariantError              float64 `json:"invariant_error"`
+	StressEnergyDensity         float64 `json:"stress_energy_density"`
+	DrivePhaseRad               float64 `json:"drive_phase_rad"`
+	DriveFrequencyHz            float64 `json:"drive_frequency_hz"`
+	CycleAvgStressEnergyDensity float64 `json:"cycle_avg_stress_energy_density"`
+	PhaseCancellationScore      float64 `json:"phase_cancellation_score"`
+	PhaseConfinementScore       float64 `json:"phase_confinement_score"`
+	CraftEnergyJ                float64 `json:"craft_energy_j"`
+	CraftEnergyDeltaJ           float64 `json:"craft_energy_delta_j"`
+	DriveEnergyAvailableJ       float64 `json:"drive_energy_available_j"`
+	DriveEnergySpentJ           float64 `json:"drive_energy_spent_j"`
+	DrivePowerRequestedW        float64 `json:"drive_power_requested_w"`
+	DrivePowerActualW           float64 `json:"drive_power_actual_w"`
+	UnfundedEnergyDebtJ         float64 `json:"unfunded_energy_debt_j"`
+	ConservationErrorJ          float64 `json:"conservation_error_j"`
+	PowerClamped                bool    `json:"power_clamped"`
+	MetricUnfunded              bool    `json:"metric_unfunded"`
+	PowerSourceType             string  `json:"power_source_type"`
+	ResonatorSubstrateType      string  `json:"resonator_substrate_type"`
+	ExoticStressSourceType      string  `json:"exotic_stress_source_type"`
+	UsablePowerW                float64 `json:"usable_power_w"`
+	ConversionEfficiency        float64 `json:"conversion_efficiency"`
+	WasteHeatW                  float64 `json:"waste_heat_w"`
+	RadiationLossW              float64 `json:"radiation_loss_w"`
+	SourceMassKG                float64 `json:"source_mass_kg"`
+	MoscoviumMetastable         bool    `json:"moscovium_metastable"`
 }
 
 type vizDoneEvent struct {
@@ -172,26 +193,47 @@ type vizDoneEvent struct {
 
 func toVizSampleEvent(s sim.Sample) vizSampleEvent {
 	return vizSampleEvent{
-		Type:                   "sample",
-		Step:                   s.Step,
-		Time:                   s.Time,
-		Altitude:               s.Altitude,
-		VerticalVel:            s.VerticalVel,
-		GravityModel:           s.GravityModel,
-		CouplingC:              s.CouplingC,
-		CouplingK:              s.CouplingK,
-		LockQuality:            s.LockQuality,
-		Energy:                 s.Energy,
-		DrivePower:             s.DrivePower,
-		RawGravity:             s.GRawMag,
-		EffectiveG:             s.EffectiveGMag,
-		YukawaRepulsionPrimary: s.YukawaRepulsionPrimary,
-		NegMassQGPrimary:       s.QGPrimary,
-		NegMassRunawayFlag:     s.RunawayAccelFlag,
-		PhaseError:             s.PhaseError,
-		PositionZ:              s.Position.Z,
-		VelocityZ:              s.Velocity.Z,
-		GravityPower:           s.GravPower,
+		Type:                        "sample",
+		Step:                        s.Step,
+		Time:                        s.Time,
+		Altitude:                    s.Altitude,
+		VerticalVel:                 s.VerticalVel,
+		MetricModel:                 s.MetricModel,
+		CouplingC:                   s.CouplingC,
+		CouplingK:                   s.CouplingK,
+		LockQuality:                 s.LockQuality,
+		Energy:                      s.Energy,
+		DrivePower:                  s.DrivePower,
+		PhaseError:                  s.PhaseError,
+		PositionZ:                   s.Position.Z,
+		VelocityZ:                   s.Velocity.Z,
+		MetricDet:                   s.MetricDet,
+		InvariantError:              s.InvariantError,
+		StressEnergyDensity:         s.StressEnergyDensity,
+		DrivePhaseRad:               s.DrivePhaseRad,
+		DriveFrequencyHz:            s.DriveFrequencyHz,
+		CycleAvgStressEnergyDensity: s.CycleAvgStressEnergyDensity,
+		PhaseCancellationScore:      s.PhaseCancellationScore,
+		PhaseConfinementScore:       s.PhaseConfinementScore,
+		CraftEnergyJ:                s.CraftCoordinateEnergyJ,
+		CraftEnergyDeltaJ:           s.CraftEnergyDeltaJ,
+		DriveEnergyAvailableJ:       s.DriveEnergyAvailableJ,
+		DriveEnergySpentJ:           s.DriveEnergySpentJ,
+		DrivePowerRequestedW:        s.DrivePowerRequestedW,
+		DrivePowerActualW:           s.DrivePowerActualW,
+		UnfundedEnergyDebtJ:         s.UnfundedEnergyDebtJ,
+		ConservationErrorJ:          s.ConservationErrorJ,
+		PowerClamped:                s.PowerClamped,
+		MetricUnfunded:              s.MetricUnfunded,
+		PowerSourceType:             s.PowerSourceType,
+		ResonatorSubstrateType:      s.ResonatorSubstrateType,
+		ExoticStressSourceType:      s.ExoticStressSourceType,
+		UsablePowerW:                s.UsablePowerW,
+		ConversionEfficiency:        s.ConversionEfficiency,
+		WasteHeatW:                  s.WasteHeatW,
+		RadiationLossW:              s.RadiationLossW,
+		SourceMassKG:                s.SourceMassKG,
+		MoscoviumMetastable:         s.MoscoviumMetastable,
 	}
 }
 

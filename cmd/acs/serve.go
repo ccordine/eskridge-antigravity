@@ -51,7 +51,7 @@ type scenarioInfo struct {
 	Dt             float64 `json:"dt"`
 	Duration       float64 `json:"duration"`
 	LogEvery       int     `json:"log_every"`
-	GravityModel   string  `json:"gravity_model"`
+	MetricModel    string  `json:"metric_model"`
 	CouplerEnabled bool    `json:"coupler_enabled"`
 }
 
@@ -477,8 +477,8 @@ func (s *paperServer) handleScenarios(w http.ResponseWriter, r *http.Request) {
 			info.Dt = cfg.Dt
 			info.Duration = cfg.Duration
 			info.LogEvery = cfg.LogEvery
-			info.GravityModel = cfg.GravityModel.Type
-			info.CouplerEnabled = cfg.Coupler.Enabled && strings.EqualFold(cfg.GravityModel.Type, "coupling")
+			info.MetricModel = cfg.MetricModel.Type
+			info.CouplerEnabled = cfg.Coupler.Enabled
 		}
 		infos = append(infos, info)
 	}
@@ -545,7 +545,7 @@ func (s *paperServer) handleSimStream(w http.ResponseWriter, r *http.Request) {
 		"dt":             cfg.Dt,
 		"duration":       cfg.Duration,
 		"log_every":      cfg.LogEvery,
-		"gravity_model":  cfg.GravityModel.Type,
+		"metric_model":   cfg.MetricModel.Type,
 		"playback_speed": speed,
 	}
 	if err := writePayload(start); err != nil {
@@ -585,20 +585,63 @@ func (s *paperServer) handleSimStream(w http.ResponseWriter, r *http.Request) {
 
 		sampleCount++
 		payload := map[string]any{
-			"type":                     "sample",
-			"step":                     sample.Step,
-			"time":                     sample.Time,
-			"altitude":                 sample.Altitude,
-			"vertical_vel":             sample.VerticalVel,
-			"gravity_model":            sample.GravityModel,
-			"coupling_c":               sample.CouplingC,
-			"coupling_k":               sample.CouplingK,
-			"lock_quality":             sample.LockQuality,
-			"energy":                   sample.Energy,
-			"drive_power":              sample.DrivePower,
-			"yukawa_repulsion_primary": sample.YukawaRepulsionPrimary,
-			"qg_primary":               sample.QGPrimary,
-			"runaway_flag":             sample.RunawayAccelFlag,
+			"type":                                "sample",
+			"step":                                sample.Step,
+			"time":                                sample.Time,
+			"altitude":                            sample.Altitude,
+			"vertical_vel":                        sample.VerticalVel,
+			"metric_model":                        sample.MetricModel,
+			"coupling_c":                          sample.CouplingC,
+			"coupling_k":                          sample.CouplingK,
+			"lock_quality":                        sample.LockQuality,
+			"energy":                              sample.Energy,
+			"drive_power":                         sample.DrivePower,
+			"metric_det":                          sample.MetricDet,
+			"invariant_error":                     sample.InvariantError,
+			"stress_energy_density":               sample.StressEnergyDensity,
+			"drive_phase_rad":                     sample.DrivePhaseRad,
+			"drive_frequency_hz":                  sample.DriveFrequencyHz,
+			"drive_omega_rad_s":                   sample.DriveOmegaRadS,
+			"drive_coherence":                     sample.DriveCoherence,
+			"mode_count":                          sample.ModeCount,
+			"cycle_avg_stress_energy_density":     sample.CycleAvgStressEnergyDensity,
+			"cockpit_curvature_norm":              sample.CockpitCurvatureNorm,
+			"bubble_wall_curvature_norm":          sample.BubbleWallCurvatureNorm,
+			"phase_cancellation_score":            sample.PhaseCancellationScore,
+			"phase_confinement_score":             sample.PhaseConfinementScore,
+			"craft_energy_j":                      sample.CraftCoordinateEnergyJ,
+			"craft_energy_delta_j":                sample.CraftEnergyDeltaJ,
+			"conserved_energy_j":                  sample.ConservedEnergyJ,
+			"conserved_energy_error_j":            sample.ConservedEnergyErrorJ,
+			"drive_energy_available_j":            sample.DriveEnergyAvailableJ,
+			"drive_energy_spent_j":                sample.DriveEnergySpentJ,
+			"drive_power_requested_w":             sample.DrivePowerRequestedW,
+			"drive_power_actual_w":                sample.DrivePowerActualW,
+			"requested_drive_authority":           sample.RequestedDriveAuthority,
+			"actual_drive_authority":              sample.ActualDriveAuthority,
+			"absolute_stress_energy_j":            sample.AbsoluteStressEnergyJ,
+			"unfunded_energy_debt_j":              sample.UnfundedEnergyDebtJ,
+			"conservation_error_j":                sample.ConservationErrorJ,
+			"conservation_error_ratio":            sample.ConservationErrorRatio,
+			"stress_energy_conservation_residual": sample.StressEnergyConservationResidual,
+			"stress_energy_conservation_valid":    sample.StressEnergyConservationValid,
+			"power_clamped":                       sample.PowerClamped,
+			"metric_unfunded":                     sample.MetricUnfunded,
+			"metric_valid":                        sample.MetricValid,
+			"power_source_type":                   sample.PowerSourceType,
+			"resonator_substrate_type":            sample.ResonatorSubstrateType,
+			"exotic_stress_source_type":           sample.ExoticStressSourceType,
+			"source_available_energy_j":           sample.SourceAvailableEnergyJ,
+			"source_max_power_w":                  sample.SourceMaxPowerW,
+			"usable_power_w":                      sample.UsablePowerW,
+			"conversion_efficiency":               sample.ConversionEfficiency,
+			"waste_heat_w":                        sample.WasteHeatW,
+			"radiation_loss_w":                    sample.RadiationLossW,
+			"source_mass_kg":                      sample.SourceMassKG,
+			"stability_risk":                      sample.StabilityRisk,
+			"physical_plausibility_rating":        sample.PhysicalPlausibilityRating,
+			"moscovium_metastable":                sample.MoscoviumMetastable,
+			"moscovium_stabilization_required":    sample.MoscoviumStabilizationRequired,
 		}
 		return writePayload(payload)
 	}

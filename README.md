@@ -1,6 +1,52 @@
-# ACS (Antigravity Coupling Simulator)
+# ACS (Eskridge Metric Engineering Simulator)
 
-Deterministic, fixed-step physics simulator in Go for an example universe where a craft modulates effective gravity through a resonant/PLL coupling subsystem.
+Deterministic Go simulator for a GR-first version of the Eskridge Drive premise.
+
+The simulator assumes general relativity is correct: gravity is not a force, and the craft does not cancel or reverse gravitational acceleration. The speculative assumption is that the drive can generate and control a local metric perturbation `h_mu_nu`. Controls change metric parameters; craft motion is computed by integrating geodesics through the resulting spacetime metric.
+
+Runtime pipeline:
+
+```text
+controller/resonator -> metric parameters -> g_mu_nu -> Gamma^mu_ab -> geodesic -> worldline
+```
+
+The drive outputs metric parameters, not acceleration.
+
+## Conservation And Power
+
+The simulator does not allow antigravity or warp behavior for free. In GR mode, the craft moves by geodesic integration through the current metric. If the metric is fixed, geodesic motion requires no thrust. If the Eskridge Drive engineers a local metric perturbation, the simulator estimates the implied stress-energy tensor and charges that cost to the drive energy ledger, clamps authority, fails the scenario, or reports explicit unfunded energy debt according to `metric_model.drive_power`.
+
+For stationary metrics, telemetry reports the conserved Killing-energy diagnostic:
+
+```text
+p_mu = m g_mu_nu U^nu
+E = -c p_0
+```
+
+Phase and resonance may optimize or redistribute stress-energy, but they do not create free energy or bypass local conservation laws.
+
+## Source Stack
+
+The drive energy model is modular:
+
+- `raw_power_source` supplies joules and watts: fission, fusion, antimatter, beamed power, capacitor discharge, black-hole/Hawking, vacuum/Casimir, dark-matter, moscovium storage, or `debug_infinite`.
+- `resonator_substrate` controls coherence, phase stability, coupling efficiency, and safe metric authority.
+- `exotic_stress_source` represents negative-energy/vacuum-state/stress-shaping capacity; it is not a simple battery.
+- `conversion_efficiency` converts source output into usable metric-engineering authority with explicit losses.
+
+Moscovium is modeled as a candidate resonator/stabilizer substrate, optionally as a hypothetical actively stabilized metastable/island-of-stability material. It may improve coherence, phase stability, confinement, or coupling efficiency. It does not provide free antigravity, free energy, direct acceleration, or any bypass around the Einstein tensor/stress-energy accounting.
+
+## Phase And Resonance
+
+The Eskridge Drive uses phase-locked oscillating metric perturbations to shape local spacetime geometry:
+
+```text
+h_mu_nu(x,t) = sum_k mode_k(x) amplitude_k cos(omega_k t + phi_k)
+```
+
+The coordinate convention is still `x^0 = ct`, so time derivatives in Christoffel and curvature calculations are derivatives with respect to meters: `d/dx^0 = (1/c) d/dt`.
+
+Phase and resonance can create constructive or destructive interference in selected regions. The simulator can use this to reduce cockpit tidal stress, improve geodesic targeting, time-average oscillating diagnostics, or confine curvature into a bubble wall. This does not remove the stress-energy requirement and does not bypass Einstein's equation. Phase changes `h_mu_nu`; it never directly changes craft velocity.
 
 ## Build
 
@@ -8,163 +54,41 @@ Deterministic, fixed-step physics simulator in Go for an example universe where 
 go build -o acs ./cmd/acs
 ```
 
-## Frontend Build (Tailwind + RecyclrJS)
-
-```bash
-npm install
-npm run build
-```
-
 ## Run
 
 ```bash
-./acs run -config scenarios/free_play.json -out out/free_play.csv -meta out/free_play.meta.json
-./acs run -config scenarios/free_fall.json -out out/free_fall.csv -meta out/free_fall.meta.json
-./acs run -config scenarios/hover_attempt.json -out out/hover.csv
+./acs run -config scenarios/gr_minkowski_inertial.json
+./acs run -config scenarios/gr_schwarzschild_fall.json
+./acs run -config scenarios/gr_metric_hover.json
+./acs run -config scenarios/gr_warp_shift_climb.json
 ```
 
-## Web App (Interactive Paper)
+CSV and replay metadata are written to `out/` unless overridden with `-out` and `-meta`.
 
-```bash
-./acs serve -addr :8080 -scenarios ./scenarios -web ./web -notes ./notes
+## Metric Models
+
+Scenarios use `metric_model`, not `gravity_model`.
+
+- `minkowski`: flat spacetime validation model.
+- `schwarzschild_isotropic`: single spherical primary body in isotropic Cartesian coordinates.
+- `engineered_metric`: Schwarzschild or Minkowski environment plus an ADM-style local warp-shift ansatz.
+
+The ADM drive metric uses signature `(-,+,+,+)` and coordinates `x^0 = ct`, `x^1..x^3` in meters. Four-velocity is normalized with `g_mu_nu U^mu U^nu = -c^2`.
+
+## Diagnostics
+
+Telemetry includes metric determinant/signature checks, Christoffel norm, invariant error, coordinate/proper time, ADM shift `beta`, lapse, drive phase/frequency/coherence, mode count, bubble parameters, Ricci scalar, Einstein tensor norm, instantaneous and cycle-averaged stress-energy density estimates, cockpit and bubble-wall curvature/tidal diagnostics, phase cancellation/confinement scores, energy ledger fields, unfunded energy debt, conservation error, local stress-energy conservation residual, negative-energy flags, NEC violation flags, and geodesic acceleration diagnostics.
+
+Stress-energy is estimated from:
+
+```text
+T_mu_nu = c^4 / (8 pi G) G_mu_nu
 ```
 
-Then open `http://127.0.0.1:8080`.
+This exposes the source tensor implied by the selected engineered metric, including exotic-energy and energy-condition diagnostics when present.
 
-Highlights:
+## Notes
 
-- Tailwind CSS-driven interactive paper layout
-- RecyclrJS fragment navigation (`/paper/*` sections)
-- Interactive Flight Lab game loop with fixed-step backend sessions (`/api/game/start`, `/api/game/step`, `/api/game/stop`)
-- Dual-canvas visualization (top-down + profile) with live HUD telemetry
-- Default lab scenario is `free_play` (when present), tuned for manual coupler piloting
-- Scenario metadata endpoint (`/api/scenarios`)
-- Scenario export endpoint (`/api/sim/export`)
-- Cascading file-based notes hub at `/notes` (Markdown docs from `notes/`)
-- Landing paper copy aligned to \"The Coupling Hypothesis (Eskridge Force)\" narrative
+Legacy Newtonian antigravity mechanisms are obsolete as runtime behavior. `C*g`, Yukawa repulsion, negative-mass signed-charge models, and effective-gravity coupling are not active metric models.
 
-## Cascading Notes Hub (No Database)
-
-The notes workspace is fully file-based and Git-tracked.
-
-- Edit docs directly in `notes/**/*.md` using Vim (or any editor).
-- Open `http://127.0.0.1:8080/notes` to browse the note tree and follow note links.
-- Use `[[slug/path]]` links inside notes to create cascading drill-down docs.
-- No database is used for notes; content is read directly from repository files at request time.
-
-## Interactive CLI UI
-
-```bash
-./acs ui
-```
-
-This opens a terminal UI flow where you:
-
-- Select a scenario from `scenarios/*.json`
-- Confirm or override CSV/meta output paths
-- Run the simulation with live progress output
-
-## Live Chart Viz (Read-Only)
-
-```bash
-./acs viz -config scenarios/hover_attempt.json -addr 127.0.0.1:8090 -speed 1.0
-```
-
-Then open `http://127.0.0.1:8090` to watch live charts.
-
-- The charts are interpreted from emitted sim samples.
-- Visualization is strictly read-only telemetry and does not drive or mutate sim state.
-- `-speed 1.0` replays samples in simulated real-time; use `-speed 5.0` for 5x faster playback.
-- CSV and replay metadata are still written the same way as `acs run`.
-
-## Docker
-
-Build and run via compose:
-
-```bash
-PORT=9008 docker compose up --build -d
-```
-
-The web app is exposed on `127.0.0.1:${PORT:-9008}` through Nginx.
-The Go app is internal-only on the compose network (`acs-app:8080`), with no host port binding.
-
-If you previously had a conflicting container name from older config:
-
-```bash
-docker rm -f acs-web 2>/dev/null || true
-```
-
-## Core guarantees
-
-- No direct state overrides for motion control.
-- Gravity is applied only through modeled acceleration (`a_grav`) from the selected gravity model.
-- Coupling model affects motion only through modeled acceleration (`C * g` or directional variant).
-- Energy draw is explicit and logged.
-- Deterministic replay metadata includes config SHA-256 and build version.
-
-## Gravity Models
-
-`gravity_model.type` selects the field model used for craft acceleration:
-
-- `coupling`: baseline Newtonian field with coupler modulation (`C * g_raw`).
-- `yukawa`: Newtonian field with Yukawa correction (`alpha`, `lambda`).
-- `negmass`: signed gravitational charge model (`qg_craft`, per-body `qg_overrides`, `C1|C2` convention).
-
-Example:
-
-```json
-"gravity_model": {
-  "type": "negmass",
-  "negmass": {
-    "convention": "C2",
-    "qg_craft": -1.0,
-    "qg_overrides": { "earth": 1.0 },
-    "runaway_accel_limit": 5.0
-  }
-}
-```
-
-## Scenario set
-
-- `scenarios/free_fall.json`
-- `scenarios/free_play.json`
-- `scenarios/hover_attempt.json`
-- `scenarios/climb.json`
-- `scenarios/lock_loss.json`
-- `scenarios/yukawa_repulsion.json`
-- `scenarios/negmass_c1_repel.json`
-- `scenarios/negmass_c2_runaway.json`
-
-## CSV columns
-
-`step,time,pos_*,vel_*,altitude,vertical_vel,g_raw_*,g_eff_*,gravity_model,ship_type,c,k,phi,phase_error,lock_quality,omega_drive,omega_0,drive_power,energy,yukawa_*,negmass_*,runaway_*,grav_power`
-
-## Flight Lab Controls
-
-In `/paper/lab`:
-
-- `Flight Guide` button opens an in-app step-by-step modal walkthrough
-- Direct slider bars for amp/phase/yaw/pitch setpoints with per-channel lock toggles (`Lock` checkboxes)
-- Expanded live ranges for high-speed play (`amp 0..24`, `phase ±pi`, `pitch ±1.53`) with faster keyboard nudges
-- Keyboard input nudges setpoint bars (`A/D`, `W/S`, `Q/E`, `I/K`); hold `Shift` for coarse steps
-- `Space`: toggles lock assist; keep it `on` for stable hover/assist behavior
-- `A / D`: decrease/increase drive amplitude target
-- `W / S`: increase/decrease phase bias target (radians)
-- `Q / E`: rotate directional coupling axis yaw
-- `I / K`: increase/decrease directional coupling axis pitch
-- `Space`: toggle lock assist (PLL gains on/off)
-- `R`: reset active session
-
-The lab also exposes:
-
-- Ship type selector (`saucer`, `sphere`, `egg`, `pyramid`, `flat_triangle`) used at session start
-- Craft scale selector (`1.00x` to `6.00x`) with `1.00x` anchored to Lazar-style saucer span (~15.8 m / 52 ft); mass scales with `scale^3` and drag area with `scale^2`
-- Planet preset selector (`earth`, `moon`, `mars`, `venus`, `jupiter`) that changes primary body mass/radius for game sessions
-- Map mode selector (`planetary`, `local`) for Earth-centered vs local-follow camera behavior
-- Planetary camera mode (`follow` or `global`) plus zoom control for non-exaggerated climb/descend visibility
-- A live HTML5 canvas 3D flight panel that renders either a flat-map scene (`local`) or globe scene (`planetary`)
-- A live speedometer dial (m/s + km/h) with needle and fading autoscale for quick motion awareness
-- A compact Flight Ops panel with tabbed `Assist` / `State` views plus collapsible advanced telemetry to keep core controls and views on one screen
-- An Energy Budget panel with mission-duration estimates (`kWh`, `MJ`, battery packs, gasoline-equivalent burn rate, and climb-power floor)
-
-The lab uses fixed dt stepping server-side and applies player input only through coupler/control targets.
+The old resonator/coupler concept may only act as a phase/authority controller for metric parameters.

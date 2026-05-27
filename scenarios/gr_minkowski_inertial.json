@@ -1,0 +1,41 @@
+{
+  "name": "gr_minkowski_inertial",
+  "seed": 1,
+  "dt": 0.02,
+  "duration": 2.0,
+  "log_every": 1,
+  "bodies": [
+    {
+      "name": "reference",
+      "mass": 1.0,
+      "radius": 1.0,
+      "position": [0.0, 0.0, 0.0],
+      "velocity": [0.0, 0.0, 0.0]
+    }
+  ],
+  "craft": {
+    "mass": 1200.0,
+    "ship_type": "saucer",
+    "inertia_diagonal": [1200.0, 1100.0, 900.0],
+    "position": [0.0, 0.0, 0.0],
+    "velocity": [10.0, 0.0, 0.0],
+    "orientation": [1.0, 0.0, 0.0, 0.0],
+    "angular_velocity": [0.0, 0.0, 0.0]
+  },
+  "environment": {
+    "g": 6.6743e-11,
+    "primary_body_index": 0,
+    "ground": { "enabled": false, "body_index": 0 }
+  },
+  "metric_model": {
+    "type": "minkowski",
+    "environment": { "type": "minkowski", "primary_body_index": 0 },
+    "numerics": {
+      "proper_time_substep_s": 0.001,
+      "metric_derivative_step_m": 0.1,
+      "max_substeps_per_tick": 100
+    }
+  },
+  "coupler": { "enabled": false, "omega0": 80.0, "q": 50.0, "default_c": 1.0 }
+}
+

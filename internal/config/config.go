@@ -22,6 +22,7 @@ type Scenario struct {
 	Craft        CraftConfig        `json:"craft"`
 	Environment  EnvironmentConfig  `json:"environment"`
 	GravityModel GravityModelConfig `json:"gravity_model"`
+	MetricModel  MetricModelConfig  `json:"metric_model"`
 	Coupler      CouplerConfig      `json:"coupler"`
 	Controller   ControllerConfig   `json:"controller"`
 }
@@ -159,6 +160,143 @@ type GravityModelConfig struct {
 	NegMass NegMassModelConfig `json:"negmass"`
 }
 
+type MetricModelConfig struct {
+	Type                 string                     `json:"type"`
+	C                    float64                    `json:"c"`
+	Environment          MetricEnvironmentConfig    `json:"environment"`
+	Drive                MetricDriveConfig          `json:"drive"`
+	DrivePower           DrivePowerConfig           `json:"drive_power"`
+	RawPowerSource       RawPowerSourceConfig       `json:"raw_power_source"`
+	ResonatorSubstrate   ResonatorSubstrateConfig   `json:"resonator_substrate"`
+	ExoticStressSource   ExoticStressSourceConfig   `json:"exotic_stress_source"`
+	ConversionEfficiency ConversionEfficiencyConfig `json:"conversion_efficiency"`
+	Numerics             MetricNumericsConfig       `json:"numerics"`
+	PhaseDiagnostics     PhaseDiagnosticsConfig     `json:"phase_diagnostics"`
+	Regions              MetricRegionsConfig        `json:"regions"`
+}
+
+type MetricEnvironmentConfig struct {
+	Type             string `json:"type"`
+	PrimaryBodyIndex int    `json:"primary_body_index"`
+}
+
+type MetricDriveConfig struct {
+	Enabled                 bool                          `json:"enabled"`
+	Type                    string                        `json:"type"`
+	BubbleRadiusM           float64                       `json:"bubble_radius_m"`
+	WallThicknessM          float64                       `json:"wall_thickness_m"`
+	MaxBeta                 float64                       `json:"max_beta"`
+	Direction               [3]float64                    `json:"direction"`
+	Phase                   float64                       `json:"phase"`
+	OmegaRadPerSec          float64                       `json:"omega_rad_s"`
+	FrequencyHz             float64                       `json:"frequency_hz"`
+	Coherence               float64                       `json:"coherence"`
+	Damping                 float64                       `json:"damping"`
+	PhaseDriftRadPerSec     float64                       `json:"phase_drift_rad_s"`
+	Authority               float64                       `json:"authority"`
+	LapseAdjust             float64                       `json:"lapse_adjust"`
+	StressEnergyDiagnostics bool                          `json:"stress_energy_diagnostics"`
+	Modes                   []MetricOscillationModeConfig `json:"modes"`
+}
+
+type DrivePowerConfig struct {
+	Enabled              bool    `json:"enabled"`
+	EnergyAvailableJ     float64 `json:"energy_available_j"`
+	MaxPowerW            float64 `json:"max_power_w"`
+	Efficiency           float64 `json:"efficiency"`
+	AllowUnfundedMetrics bool    `json:"allow_unfunded_metrics"`
+	UnfundedBehavior     string  `json:"unfunded_behavior"`
+}
+
+type RawPowerSourceConfig struct {
+	Type                       string  `json:"type"`
+	AvailableEnergyJ           float64 `json:"available_energy_j"`
+	MaxPowerW                  float64 `json:"max_power_w"`
+	ConversionEfficiency       float64 `json:"conversion_efficiency"`
+	WasteHeatW                 float64 `json:"waste_heat_w"`
+	RadiationLossW             float64 `json:"radiation_loss_w"`
+	SourceMassKG               float64 `json:"source_mass_kg"`
+	DepletionRate              float64 `json:"depletion_rate"`
+	StabilityRisk              float64 `json:"stability_risk"`
+	PhysicalPlausibilityRating float64 `json:"physical_plausibility_rating"`
+	Notes                      string  `json:"notes"`
+}
+
+type ResonatorSubstrateConfig struct {
+	Type                        string  `json:"type"`
+	Isotope                     string  `json:"isotope"`
+	Metastable                  bool    `json:"metastable"`
+	RequiresActiveStabilization bool    `json:"requires_active_stabilization"`
+	CoherenceMultiplier         float64 `json:"coherence_multiplier"`
+	PhaseStability              float64 `json:"phase_stability"`
+	CouplingEfficiency          float64 `json:"coupling_efficiency"`
+	MaxSafeMetricAuthority      float64 `json:"max_safe_metric_authority"`
+	BubbleWallConfinementAid    float64 `json:"bubble_wall_confinement_aid"`
+	CockpitCancellationAid      float64 `json:"cockpit_cancellation_aid"`
+	StabilizationPowerW         float64 `json:"stabilization_power_w"`
+	StorageEnergyJ              float64 `json:"storage_energy_j"`
+	StabilityRisk               float64 `json:"stability_risk"`
+	PhysicalPlausibilityRating  float64 `json:"physical_plausibility_rating"`
+	Notes                       string  `json:"notes"`
+}
+
+type ExoticStressSourceConfig struct {
+	Type                       string  `json:"type"`
+	AvailableEnergyJ           float64 `json:"available_energy_j"`
+	MaxPowerW                  float64 `json:"max_power_w"`
+	ConversionEfficiency       float64 `json:"conversion_efficiency"`
+	NegativeEnergyCapacityJ    float64 `json:"negative_energy_capacity_j"`
+	StressShapingAuthority     float64 `json:"stress_shaping_authority"`
+	NECViolationCapacity       float64 `json:"nec_violation_capacity"`
+	WasteHeatW                 float64 `json:"waste_heat_w"`
+	RadiationLossW             float64 `json:"radiation_loss_w"`
+	SourceMassKG               float64 `json:"source_mass_kg"`
+	DepletionRate              float64 `json:"depletion_rate"`
+	StabilityRisk              float64 `json:"stability_risk"`
+	PhysicalPlausibilityRating float64 `json:"physical_plausibility_rating"`
+	Notes                      string  `json:"notes"`
+}
+
+type ConversionEfficiencyConfig struct {
+	Type                  string  `json:"type"`
+	Efficiency            float64 `json:"efficiency"`
+	MetricCouplingFactor  float64 `json:"metric_coupling_factor"`
+	WasteHeatFraction     float64 `json:"waste_heat_fraction"`
+	RadiationLossFraction float64 `json:"radiation_loss_fraction"`
+	Notes                 string  `json:"notes"`
+}
+
+type MetricOscillationModeConfig struct {
+	Amplitude      float64       `json:"amplitude"`
+	OmegaRadPerSec float64       `json:"omega_rad_s"`
+	FrequencyHz    float64       `json:"frequency_hz"`
+	PhaseRad       float64       `json:"phase_rad"`
+	Direction      [3]float64    `json:"direction"`
+	TensorShape    [4][4]float64 `json:"tensor_shape"`
+	SpatialProfile string        `json:"spatial_profile"`
+}
+
+type PhaseDiagnosticsConfig struct {
+	Enabled         bool `json:"enabled"`
+	CycleAverage    bool `json:"cycle_average"`
+	SamplesPerCycle int  `json:"samples_per_cycle"`
+	PhaseSweep      bool `json:"phase_sweep"`
+	PhaseSweepSteps int  `json:"phase_sweep_steps"`
+}
+
+type MetricRegionsConfig struct {
+	CockpitRadiusM        float64 `json:"cockpit_radius_m"`
+	BubbleRadiusM         float64 `json:"bubble_radius_m"`
+	WallThicknessM        float64 `json:"wall_thickness_m"`
+	SamplePointsPerRegion int     `json:"sample_points_per_region"`
+}
+
+type MetricNumericsConfig struct {
+	ProperTimeSubstepS    float64 `json:"proper_time_substep_s"`
+	MetricDerivativeStepM float64 `json:"metric_derivative_step_m"`
+	MaxSubstepsPerTick    int     `json:"max_substeps_per_tick"`
+}
+
 type YukawaConfig struct {
 	Alpha  float64 `json:"alpha"`
 	Lambda float64 `json:"lambda"`
@@ -266,9 +404,6 @@ func (s *Scenario) Validate() error {
 		return fmt.Errorf("craft.ship_type must be saucer, sphere, egg, pyramid, or flat_triangle")
 	}
 	s.Craft.ShipType = normalizedShipType
-	if s.Environment.G == 0 {
-		return fmt.Errorf("environment.g must be non-zero")
-	}
 	if s.Environment.PrimaryBodyIdx < 0 || s.Environment.PrimaryBodyIdx >= len(s.Bodies) {
 		return fmt.Errorf("environment.primary_body_index out of range")
 	}
@@ -276,41 +411,234 @@ func (s *Scenario) Validate() error {
 		s.LogEvery = 1
 	}
 
-	s.GravityModel.Type = strings.ToLower(strings.TrimSpace(s.GravityModel.Type))
-	if s.GravityModel.Type == "" {
-		s.GravityModel.Type = "coupling"
+	if s.Environment.G == 0 {
+		s.Environment.G = 6.67430e-11
 	}
-
-	switch s.GravityModel.Type {
-	case "coupling":
-		// uses existing coupler subsystem with no extra config requirements
-	case "yukawa":
-		if s.GravityModel.Yukawa.Lambda < 0 {
-			return fmt.Errorf("gravity_model.yukawa.lambda must be >= 0")
-		}
-	case "negmass":
-		convention := strings.ToUpper(strings.TrimSpace(s.GravityModel.NegMass.Convention))
-		if convention == "" {
-			convention = "C1"
-		}
-		if convention != "C1" && convention != "C2" {
-			return fmt.Errorf("gravity_model.negmass.convention must be C1 or C2")
-		}
-		s.GravityModel.NegMass.Convention = convention
-		if s.GravityModel.NegMass.QGCraft == 0 {
-			s.GravityModel.NegMass.QGCraft = 1
-		}
-		if s.GravityModel.NegMass.RunawayAccelLimit <= 0 {
-			s.GravityModel.NegMass.RunawayAccelLimit = 1e6
-		}
-		if s.GravityModel.NegMass.QGOverrides == nil {
-			s.GravityModel.NegMass.QGOverrides = make(map[string]float64)
-		}
+	s.MetricModel.Type = strings.ToLower(strings.TrimSpace(s.MetricModel.Type))
+	if s.MetricModel.Type == "" {
+		s.MetricModel.Type = "schwarzschild_isotropic"
+	}
+	if strings.TrimSpace(s.GravityModel.Type) != "" {
+		return fmt.Errorf("gravity_model is obsolete; use metric_model")
+	}
+	switch s.MetricModel.Type {
+	case "minkowski", "schwarzschild_isotropic", "engineered_metric":
 	default:
-		return fmt.Errorf("gravity_model.type must be coupling, yukawa, or negmass")
+		return fmt.Errorf("metric_model.type must be minkowski, schwarzschild_isotropic, or engineered_metric")
+	}
+	if s.MetricModel.C == 0 {
+		s.MetricModel.C = 299792458
+	}
+	if s.MetricModel.Environment.PrimaryBodyIndex == 0 {
+		s.MetricModel.Environment.PrimaryBodyIndex = s.Environment.PrimaryBodyIdx
+	}
+	if s.MetricModel.Environment.PrimaryBodyIndex < 0 || s.MetricModel.Environment.PrimaryBodyIndex >= len(s.Bodies) {
+		return fmt.Errorf("metric_model.environment.primary_body_index out of range")
+	}
+	s.MetricModel.Environment.Type = strings.ToLower(strings.TrimSpace(s.MetricModel.Environment.Type))
+	if s.MetricModel.Environment.Type == "" {
+		if s.MetricModel.Type == "minkowski" {
+			s.MetricModel.Environment.Type = "minkowski"
+		} else {
+			s.MetricModel.Environment.Type = "schwarzschild_isotropic"
+		}
+	}
+	switch s.MetricModel.Environment.Type {
+	case "minkowski", "schwarzschild_isotropic":
+	default:
+		return fmt.Errorf("metric_model.environment.type must be minkowski or schwarzschild_isotropic")
+	}
+	if s.MetricModel.Type == "engineered_metric" {
+		s.MetricModel.Drive.Type = strings.ToLower(strings.TrimSpace(s.MetricModel.Drive.Type))
+		if s.MetricModel.Drive.Type == "" {
+			s.MetricModel.Drive.Type = "adm_warp_shift"
+		}
+		if s.MetricModel.Drive.Type != "adm_warp_shift" {
+			return fmt.Errorf("metric_model.drive.type must be adm_warp_shift")
+		}
+		if s.MetricModel.Drive.BubbleRadiusM <= 0 {
+			return fmt.Errorf("metric_model.drive.bubble_radius_m must be > 0")
+		}
+		if s.MetricModel.Drive.WallThicknessM <= 0 {
+			return fmt.Errorf("metric_model.drive.wall_thickness_m must be > 0")
+		}
+		if abs(s.MetricModel.Drive.MaxBeta) >= 1 {
+			return fmt.Errorf("metric_model.drive.max_beta must have magnitude < 1")
+		}
+		if s.MetricModel.Drive.Authority < 0 || s.MetricModel.Drive.Authority > 1 {
+			return fmt.Errorf("metric_model.drive.authority must be in [0,1]")
+		}
+		if s.MetricModel.Drive.Enabled && !s.MetricModel.DrivePower.Enabled {
+			s.MetricModel.DrivePower.Enabled = true
+		}
+		if s.MetricModel.Drive.FrequencyHz > 0 {
+			s.MetricModel.Drive.OmegaRadPerSec = 2 * 3.141592653589793 * s.MetricModel.Drive.FrequencyHz
+		}
+		if s.MetricModel.Drive.OmegaRadPerSec < 0 {
+			return fmt.Errorf("metric_model.drive.omega_rad_s must be >= 0")
+		}
+		if s.MetricModel.Drive.Coherence == 0 {
+			s.MetricModel.Drive.Coherence = 1
+		}
+		if s.MetricModel.Drive.Coherence < 0 || s.MetricModel.Drive.Coherence > 1 {
+			return fmt.Errorf("metric_model.drive.coherence must be in [0,1]")
+		}
+		for i := range s.MetricModel.Drive.Modes {
+			if s.MetricModel.Drive.Modes[i].FrequencyHz > 0 {
+				s.MetricModel.Drive.Modes[i].OmegaRadPerSec = 2 * 3.141592653589793 * s.MetricModel.Drive.Modes[i].FrequencyHz
+			}
+			if s.MetricModel.Drive.Modes[i].OmegaRadPerSec < 0 {
+				return fmt.Errorf("metric_model.drive.modes[%d].omega_rad_s must be >= 0", i)
+			}
+		}
+	}
+	if err := s.normalizeSourceStack(); err != nil {
+		return err
+	}
+	if s.MetricModel.Numerics.ProperTimeSubstepS <= 0 {
+		s.MetricModel.Numerics.ProperTimeSubstepS = 0.0005
+	}
+	if s.MetricModel.Numerics.MetricDerivativeStepM <= 0 {
+		s.MetricModel.Numerics.MetricDerivativeStepM = 0.1
+	}
+	if s.MetricModel.Numerics.MaxSubstepsPerTick <= 0 {
+		s.MetricModel.Numerics.MaxSubstepsPerTick = 1000
+	}
+	if s.MetricModel.PhaseDiagnostics.SamplesPerCycle <= 0 {
+		s.MetricModel.PhaseDiagnostics.SamplesPerCycle = 32
+	}
+	if s.MetricModel.PhaseDiagnostics.PhaseSweepSteps <= 0 {
+		s.MetricModel.PhaseDiagnostics.PhaseSweepSteps = 64
+	}
+	if s.MetricModel.Regions.CockpitRadiusM <= 0 {
+		s.MetricModel.Regions.CockpitRadiusM = 2
+	}
+	if s.MetricModel.Regions.BubbleRadiusM <= 0 {
+		s.MetricModel.Regions.BubbleRadiusM = s.MetricModel.Drive.BubbleRadiusM
+	}
+	if s.MetricModel.Regions.BubbleRadiusM <= 0 {
+		s.MetricModel.Regions.BubbleRadiusM = 20
+	}
+	if s.MetricModel.Regions.WallThicknessM <= 0 {
+		s.MetricModel.Regions.WallThicknessM = s.MetricModel.Drive.WallThicknessM
+	}
+	if s.MetricModel.Regions.WallThicknessM <= 0 {
+		s.MetricModel.Regions.WallThicknessM = 5
+	}
+	if s.MetricModel.Regions.SamplePointsPerRegion <= 0 {
+		s.MetricModel.Regions.SamplePointsPerRegion = 64
+	}
+	if s.MetricModel.DrivePower.Efficiency == 0 {
+		s.MetricModel.DrivePower.Efficiency = 1
+	}
+	if s.MetricModel.DrivePower.Efficiency <= 0 || s.MetricModel.DrivePower.Efficiency > 1 {
+		return fmt.Errorf("metric_model.drive_power.efficiency must be in (0,1]")
+	}
+	if s.MetricModel.DrivePower.MaxPowerW < 0 {
+		return fmt.Errorf("metric_model.drive_power.max_power_w must be >= 0")
+	}
+	if s.MetricModel.DrivePower.EnergyAvailableJ < 0 {
+		return fmt.Errorf("metric_model.drive_power.energy_available_j must be >= 0")
+	}
+	s.MetricModel.DrivePower.UnfundedBehavior = strings.ToLower(strings.TrimSpace(s.MetricModel.DrivePower.UnfundedBehavior))
+	if s.MetricModel.DrivePower.UnfundedBehavior == "" {
+		s.MetricModel.DrivePower.UnfundedBehavior = "fail"
+	}
+	switch s.MetricModel.DrivePower.UnfundedBehavior {
+	case "fail", "clamp", "diagnostic_only":
+	default:
+		return fmt.Errorf("metric_model.drive_power.unfunded_behavior must be fail, clamp, or diagnostic_only")
 	}
 
 	return nil
+}
+
+func (s *Scenario) normalizeSourceStack() error {
+	src := &s.MetricModel.RawPowerSource
+	src.Type = strings.ToLower(strings.TrimSpace(src.Type))
+	if src.Type != "" {
+		switch src.Type {
+		case "fission", "fusion", "antimatter", "beamed_power", "capacitor", "pulsed_discharge", "black_hole", "hawking", "vacuum_casimir", "dark_matter", "moscovium_storage", "debug_infinite":
+		default:
+			return fmt.Errorf("metric_model.raw_power_source.type is unsupported")
+		}
+		if src.ConversionEfficiency == 0 {
+			src.ConversionEfficiency = 1
+		}
+		if src.ConversionEfficiency <= 0 || src.ConversionEfficiency > 1 {
+			return fmt.Errorf("metric_model.raw_power_source.conversion_efficiency must be in (0,1]")
+		}
+		if src.AvailableEnergyJ < 0 || src.MaxPowerW < 0 || src.SourceMassKG < 0 {
+			return fmt.Errorf("metric_model.raw_power_source energy, power, and mass must be >= 0")
+		}
+	}
+
+	sub := &s.MetricModel.ResonatorSubstrate
+	sub.Type = strings.ToLower(strings.TrimSpace(sub.Type))
+	if sub.Type != "" {
+		switch sub.Type {
+		case "generic", "moscovium", "metastable_moscovium", "superconductor", "exotic_crystal", "debug_ideal":
+		default:
+			return fmt.Errorf("metric_model.resonator_substrate.type is unsupported")
+		}
+		if sub.CoherenceMultiplier == 0 {
+			sub.CoherenceMultiplier = 1
+		}
+		if sub.PhaseStability == 0 {
+			sub.PhaseStability = 1
+		}
+		if sub.CouplingEfficiency == 0 {
+			sub.CouplingEfficiency = 1
+		}
+		if sub.MaxSafeMetricAuthority == 0 {
+			sub.MaxSafeMetricAuthority = 1
+		}
+		if sub.CoherenceMultiplier < 0 || sub.PhaseStability < 0 || sub.CouplingEfficiency <= 0 || sub.MaxSafeMetricAuthority < 0 {
+			return fmt.Errorf("metric_model.resonator_substrate multipliers must be non-negative and efficiency must be > 0")
+		}
+		if sub.MaxSafeMetricAuthority > 1 {
+			sub.MaxSafeMetricAuthority = 1
+		}
+	}
+
+	exotic := &s.MetricModel.ExoticStressSource
+	exotic.Type = strings.ToLower(strings.TrimSpace(exotic.Type))
+	if exotic.Type != "" {
+		switch exotic.Type {
+		case "vacuum_casimir", "negative_energy", "dark_matter", "none", "debug_exotic":
+		default:
+			return fmt.Errorf("metric_model.exotic_stress_source.type is unsupported")
+		}
+		if exotic.ConversionEfficiency == 0 {
+			exotic.ConversionEfficiency = 1
+		}
+		if exotic.ConversionEfficiency <= 0 || exotic.ConversionEfficiency > 1 {
+			return fmt.Errorf("metric_model.exotic_stress_source.conversion_efficiency must be in (0,1]")
+		}
+	}
+
+	conv := &s.MetricModel.ConversionEfficiency
+	conv.Type = strings.ToLower(strings.TrimSpace(conv.Type))
+	if conv.Type == "" {
+		conv.Type = "explicit"
+	}
+	if conv.Efficiency == 0 {
+		conv.Efficiency = 1
+	}
+	if conv.MetricCouplingFactor == 0 {
+		conv.MetricCouplingFactor = 1
+	}
+	if conv.Efficiency <= 0 || conv.Efficiency > 1 || conv.MetricCouplingFactor <= 0 {
+		return fmt.Errorf("metric_model.conversion_efficiency values are invalid")
+	}
+	return nil
+}
+
+func abs(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func normalizeShipType(ship string) (string, bool) {

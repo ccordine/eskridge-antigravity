@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-05-27T17:03:52Z",
+  "scenario": "gr_metric_hover",
+  "seed": 1,
+  "dt": 0.0166667,
+  "duration": 2,
+  "steps": 120,
+  "version": "(devel)",
+  "config_sha256": "6ca14910cc8ed4dc9ba3a211308d3a19f0854812d225d91c8d63e172453be9ff"
+}

@@ -61,16 +61,15 @@ func runScenarioWithHook(cfgPath string, cfg config.Scenario, outPath, metaPath 
 		lastPrint = now
 		pct := 100.0 * float64(stepDisplay) / float64(totalSteps)
 		fmt.Fprintf(progress,
-			"\rstep %d/%d (%.1f%%) t=%.2fs alt=%.1fm vz=%.2fm/s C=%.3f lock=%.3f E=%.0fW*s",
+			"\rstep %d/%d (%.1f%%) t=%.2fs alt=%.1fm vz=%.2fm/s metric=%s inv=%.3g",
 			stepDisplay,
 			totalSteps,
 			pct,
 			s.Time,
 			s.Altitude,
 			s.VerticalVel,
-			s.CouplingC,
-			s.LockQuality,
-			s.Energy,
+			s.MetricModel,
+			s.InvariantError,
 		)
 	}
 

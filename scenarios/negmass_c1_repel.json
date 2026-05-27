@@ -43,15 +43,13 @@
       "tangential_mu": 0.2
     }
   },
-  "gravity_model": {
-    "type": "negmass",
-    "negmass": {
-      "convention": "C1",
-      "qg_craft": -1.0,
-      "qg_overrides": {
-        "earth": 1.0
-      },
-      "runaway_accel_limit": 1000000.0
+  "metric_model": {
+    "type": "schwarzschild_isotropic",
+    "environment": { "type": "schwarzschild_isotropic", "primary_body_index": 0 },
+    "numerics": {
+      "proper_time_substep_s": 0.001,
+      "metric_derivative_step_m": 1.0,
+      "max_substeps_per_tick": 100
     }
   },
   "coupler": {

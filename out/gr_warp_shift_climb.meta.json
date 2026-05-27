@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-05-27T16:55:45Z",
+  "scenario": "gr_warp_shift_climb",
+  "seed": 1,
+  "dt": 0.0166667,
+  "duration": 2,
+  "steps": 120,
+  "version": "(devel)",
+  "config_sha256": "25022bdfc66f805fc4630ed8513a5526e1fed7ed17ca2ac5f96665b4fbc411a2"
+}

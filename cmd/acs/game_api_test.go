@@ -424,26 +424,15 @@ func TestStepPublishesCouplingStepAsSingleTelemetrySource(t *testing.T) {
 	}
 }
 
-func TestGameSessionForcesCanonicalCouplingGravityModel(t *testing.T) {
+func TestGameSessionRejectsLegacyGravityModel(t *testing.T) {
 	scenarioPath := filepath.Join("..", "..", "scenarios", "free_play.json")
 	cfg, err := config.Load(scenarioPath)
 	if err != nil {
 		t.Fatalf("load scenario: %v", err)
 	}
 	cfg.GravityModel.Type = "negmass"
-	session, err := newGameSession("test-canonical-gravity", scenarioPath, cfg, false, "saucer", "resonant_pll", "earth", 1)
-	if err != nil {
-		t.Fatalf("new session: %v", err)
-	}
-	if session.gravityModel != "coupling" {
-		t.Fatalf("expected canonical gravity model coupling, got %q", session.gravityModel)
-	}
-	state, err := session.State()
-	if err != nil {
-		t.Fatalf("state: %v", err)
-	}
-	if state.GravityModel != "coupling" {
-		t.Fatalf("state should publish canonical gravity model coupling, got %q", state.GravityModel)
+	if err := cfg.Validate(); err == nil {
+		t.Fatalf("expected legacy gravity_model to be rejected")
 	}
 }
 
